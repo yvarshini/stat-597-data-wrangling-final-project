@@ -1,0 +1,239 @@
+---
+title: "DWH Project"
+author: "Varshini Yanamandra"
+date: "2023-04-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(httr)
+library(curl)
+library(jsonlite)
+library(RCurl)
+library(ggplot2)
+```
+
+```{r}
+# IMDb movie IDs
+
+# MARVEL
+capt.america <- c("tt0458339", "tt1843866", "tt3498820")
+iron.man <- c("tt0371746", "tt1228705", "tt1300854")
+thor <- c("tt0800369", "tt1981115", "tt3501632", "tt10648342")
+spiderman <- c("tt0145487", "tt0316654", "tt0413300", "tt2250912", "tt6320628", "tt10872600")
+hulk <- c("tt0286716", "tt0800080")
+
+# DC
+wonder.woman <- c("tt0451279", "tt7126948")
+batman.dkt <- c("tt0372784", "tt0468569", "tt1345836") # The Dark Knight Trilogy
+superman <- c("tt0348150", "tt0770828")
+aquaman <- c("tt1477834") #, "tt9663764")
+shazam <- c("tt0448115", "tt10151854")
+```
+
+```{r}
+# OMDB API - extracting film information
+mykey = "4ce5d1e6"
+baseurl <- "http://www.omdbapi.com"
+
+captainAmerica <- rep("", length(capt.america))
+for (i in 1:length(capt.america)) {
+  captainAmerica[i] <- getForm(uri = baseurl, apikey = mykey, i = capt.america[i])
+}
+
+ironMan <- rep("", length(iron.man))
+for (i in 1:length(iron.man)) {
+  ironMan[i] <- getForm(uri = baseurl, apikey = mykey, i = iron.man[i])
+}
+
+Thor <- rep("", length(thor))
+for (i in 1:length(thor)) {
+  Thor[i] <- getForm(uri = baseurl, apikey = mykey, i = thor[i])
+}
+
+Spiderman <- rep("", length(spiderman))
+for (i in 1:length(spiderman)) {
+  Spiderman[i] <- getForm(uri = baseurl, apikey = mykey, i = spiderman[i])
+}
+
+Hulk <- rep("", length(hulk))
+for (i in 1:length(hulk)) {
+  Hulk[i] <- getForm(uri = baseurl, apikey = mykey, i = hulk[i])
+}
+
+wonderWoman <- rep("", length(wonder.woman))
+for (i in 1:length(wonder.woman)) {
+  wonderWoman[i] <- getForm(uri = baseurl, apikey = mykey, i = wonder.woman[i])
+}
+
+Batman <- rep("", length(batman.dkt))
+for (i in 1:length(batman.dkt)) {
+  Batman[i] <- getForm(uri = baseurl, apikey = mykey, i = batman.dkt[i])
+}
+
+Superman <- rep("", length(superman))
+for (i in 1:length(superman)) {
+  Superman[i] <- getForm(uri = baseurl, apikey = mykey, i = superman[i])
+}
+
+Aquaman <- rep("", length(aquaman))
+for (i in 1:length(aquaman)) {
+  Aquaman[i] <- getForm(uri = baseurl, apikey = mykey, i = aquaman[i])
+}
+
+Shazam <- rep("", length(shazam))
+for (i in 1:length(shazam)) {
+  Shazam[i] <- getForm(uri = baseurl, apikey = mykey, i = shazam[i])
+}
+```
+
+```{r}
+# joining the movies by comic universe
+marvel <- c(capt.america, iron.man, thor, spiderman, hulk)
+dc <- c(wonder.woman, batman.dkt, superman, aquaman, shazam)
+
+Marvel <- rep("", length(marvel))
+for (i in 1:length(marvel)) {
+  Marvel[i] <- getForm(uri = baseurl, apikey = mykey, i = marvel[i])
+}
+
+DC <- rep("", length(dc))
+for (i in 1:length(dc)) {
+  DC[i] <- getForm(uri = baseurl, apikey = mykey, i = dc[i])
+}
+```
+
+```{r}
+# summary dataframes
+marvel.summary <- data.frame(matrix(ncol = 25, nrow = 0)) # fromJSON() response has 25 attributes
+colnames(marvel.summary) <- Marvel[1] %>% fromJSON() %>% names()
+
+for (i in 1:length(Marvel)) {
+  marvel.summary.temp <- do.call("cbind", fromJSON(Marvel[i]))
+  marvel.summary <- rbind(marvel.summary, marvel.summary.temp)
+}
+
+marvel.summary %>% head() # need to pivot wider
+marvel.summary <- pivot_wider(marvel.summary, names_from = Ratings.Source, values_from = Ratings.Value)
+marvel.summary %>% head()
+
+dc.summary <- data.frame(matrix(ncol = 25, nrow = 0))
+colnames(dc.summary) <- DC[1] %>% fromJSON() %>% names()
+
+for (i in 1:length(DC)) {
+  dc.summary.temp <- do.call("cbind", fromJSON(DC[i]))
+  dc.summary <- rbind(dc.summary, dc.summary.temp)
+}
+
+dc.summary %>% head() # need to pivot wider
+dc.summary <- pivot_wider(dc.summary, names_from = Ratings.Source, values_from = Ratings.Value)
+dc.summary %>% head()
+```
+
+```{r}
+# DATA PROCESSING
+
+# adding a new column to both the dataframes
+marvel.summary$Universe <- rep("Marvel", dim(marvel.summary)[1])
+dc.summary$Universe <- rep("DC", dim(dc.summary)[1])
+
+# combining the two dataframes into one
+movies <- rbind(marvel.summary, dc.summary)
+
+l = dim(movies)[1]
+movies.wins <- rep("", l)
+movies.noms <- rep("", l)
+movies.Owins <- rep("", l)
+movies.Onoms <- rep("", l)
+
+for (i in 1:l) {
+  movies.wins[i] = str_extract(str_extract(movies$Awards[i], "[0-9]+ win"), "[0-9]+") # extract number of wins
+  movies.noms[i] = str_extract(str_extract(movies$Awards[i], "[0-9]+ nomination"), "[0-9]+") # extract number of nominations
+  movies.Onoms[i] = str_extract(str_extract(movies$Awards[i], "Nominated for [0-9]+ Oscar"), "[0-9]+") # extract number of Oscar nominations
+  movies.Owins[i] = str_extract(str_extract(movies$Awards[i], "Won [0-9]+ Oscar"), "[0-9]+") # extract number of Oscar wins
+}
+
+movies$Wins = movies.wins
+movies$Nominations = movies.noms
+movies$OscarWins = movies.Owins
+movies$OscarNominations = movies.Onoms
+# some more processing
+movies$imdbVotes <- gsub(",", "", movies$imdbVotes)
+movies$BoxOffice <- gsub(",", "", movies$BoxOffice)
+movies$BoxOffice <- gsub("[$]", "", movies$BoxOffice)
+movies$Runtime <- gsub(" min", "", movies$Runtime)
+movies$`Internet Movie Database` <- gsub("/10", "", movies$`Internet Movie Database`)
+movies$`Rotten Tomatoes` <- gsub("[%]", "", movies$`Rotten Tomatoes`)
+movies$Metacritic <- gsub("/100", "", movies$Metacritic)
+
+# replacing 'NA' with 0 and converting the columns to numeric types
+movies <- movies %>% mutate_at(c(5, 15:17, 21, 25:27, 29:32), ~replace_na(., "0")) %>% mutate_at(c(5, 15:17, 21, 25:27, 29:32), as.numeric)
+movies %>% head()
+
+# some cells where the numeric field values were "N/A" will be coerced to NA when using as.numeric() - this is ok, since they are null values originally. None of the numeric values are being lost.
+```
+
+```{r}
+# selecting only the columns needed for further analysis
+movies <- movies[, c(1, 5, 10, 16:17, 21, 26:32)]
+head(movies, 3)
+```
+
+```{r}
+ggplot(movies, aes(Runtime, reorder(Title, Runtime), fill = Universe)) +
+  geom_col() + labs(y = "Movie")
+```
+
+From this plot, we can see that most DC movies have a longer runtime when compared to Marvel movies, in the 10 movie series we have chosen. We also see that in the DC universe movies, the 'Shazam!' films have the lowest runtimes.
+
+```{r}
+par(mfrow = c(2, 2))
+
+ggplot(movies, aes(imdbRating, reorder(Title, imdbRating), fill = Universe)) +
+  geom_col() + labs(y = "Movie") + ggtitle("IMDb Ratings")
+
+ggplot(movies, aes(`Rotten Tomatoes`, reorder(Title, `Rotten Tomatoes`), fill = Universe)) +
+  geom_col() + labs(y = "Movie") + ggtitle("Rotten Tomatoes Ratings")
+
+ggplot(movies, aes(Metacritic, reorder(Title, Metacritic), fill = Universe)) +
+  geom_col() + labs(y = "Movie") + ggtitle("Metacritic Score")
+```
+
+Based on these 3 ratings, we can't say that movies of one Universe do better than another!
+
+```{r}
+# let us take the Spiderman series and check some results out
+spidey <- filter(movies, grepl("Spider-Man", Title))
+spidey # these are in order of their release dates
+
+# let us compare the Metacritic ratings with the runtime
+ggplot(spidey) +
+  geom_line(mapping = aes(Title, Metacritic, group = 1, color = "Metacritic Rating")) + geom_point(mapping = aes(Title, Metacritic, group = 1, color = "Metacritic Rating")) + geom_line(mapping = aes(Title, Runtime, group = 1, color = "Runtime")) + geom_point(mapping = aes(Title, Runtime, group = 1, color = "Runtime")) + theme(axis.text.x = element_text(angle = 90))
+```
+
+Interestingly, we see that the Metacritic ratings generally go down with increasing runtimes and vice-versa. This is not strictly the case, however! Spider-Man 2 is also the highest-rated movie of the series, based on Metacritic ratings.
+
+```{r}
+# let us compare wins and nominations
+ggplot(spidey) +
+  geom_line(aes(Title, Nominations, group = 1, color = "Nominations")) + geom_point(aes(Title, Nominations, group = 1, color = "Nominations")) + geom_line(aes(Title, Wins, group = 1, color = "Wins")) + geom_point(aes(Title, Wins, group = 1, color = "Wins")) + geom_line(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + geom_point(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + geom_line(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + geom_point(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + theme(axis.text.x = element_text(angle = 90))
+```
+
+Spider-Man: Homecoming seems to have done the worst in terms of both wins and nominations for awards, while the next movie, Spider-Man: No Way Home did the best. However, Spider-Man 2 seems to have an Oscar win without an Oscar nomination, which is not possible! On doing an internet search, the film actually received 3 Oscar nominations, making it both the film in the series with the highest Oscar nominations and wins. This is due to the way we extracted the information using Regular Expressions. The description from OMDB only said "Won 1 Oscar."
+
+```{r}
+ggplot(movies, aes(imdbVotes, reorder(Title, imdbVotes), fill = Universe)) +
+  geom_col() + labs(y = "Movie") + ggtitle("IMDb Votes")
+```
+
+The top 3 movies based on votes are all DC movies, and are also all Batman movies. The difference between the number of votes for the movies at place 3 (Batman Begins) and place 4 (Iron Man) is huge!
+
+```{r}
+# sentiment analysis
+```
+
