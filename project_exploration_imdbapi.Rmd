@@ -266,63 +266,124 @@ ggplot(spidey) +
 Interestingly, we see that the Metacritic ratings generally go down with increasing runtimes and vice-versa. This is not strictly the case, however! Spider-Man 2 is also the highest-rated movie of the series, based on Metacritic ratings. There is no noticeable trend in the box office earnings. 
 It is noted that there is an extreme increase in the earnings of 'Spider-Man: No Way Home' compared to the other films in the series. This could be because it was released just as COVID restrictions were being lifted, which made people more excited than normal to watch the film in theatres after being cooped up at home for around two years.
 
+The next plot compares the award wins and nominations received by each of the six Spider-Man movies. Oscar wins and nominations have also been included. Each line has a different color, and has labelled clearly.
+
 ```{r}
 # plot 6: comparing award wins and nominations
 ggplot(spidey) +
-  geom_line(aes(Title, Nominations, group = 1, color = "Nominations")) + geom_point(aes(Title, Nominations, group = 1, color = "Nominations")) + geom_line(aes(Title, Wins, group = 1, color = "Wins")) + geom_point(aes(Title, Wins, group = 1, color = "Wins")) + geom_line(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + geom_point(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + geom_line(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + geom_point(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + theme(axis.text.x = element_text(angle = 90))
+  # plotting total award nominations
+  geom_line(aes(Title, Nominations, group = 1, color = "Nominations")) + # line plot
+  geom_point(aes(Title, Nominations, group = 1, color = "Nominations")) + # plotting every point
+  # plotting total award wins
+  geom_line(aes(Title, Wins, group = 1, color = "Wins")) + # line plot
+  geom_point(aes(Title, Wins, group = 1, color = "Wins")) + # plotting every point
+  # plotting Oscar nominations
+  geom_line(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + # line plot
+  geom_point(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + # plotting every point
+  # plotting Oscar wins
+  geom_line(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + # line plot
+  geom_point(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + # plotting every point
+  theme(axis.text.x = element_text(angle = 90)) + # rotating the x-axis labels by 90 degrees
+  ggtitle("Award Statistics of Spider-Man Movies") + # plot title
+  xlab("Movie") + ylab("Number") # x and y-axis titles
 ```
 
-Spider-Man: Homecoming seems to have done the worst in terms of both wins and nominations for awards, while the next movie, Spider-Man: No Way Home did the best. However, Spider-Man 2 seems to have an Oscar win without an Oscar nomination, which is not possible! On doing an internet search, the film actually received 3 Oscar nominations, making it both the film in the series with the highest Oscar nominations and wins. This is due to the way we extracted the information using Regular Expressions. The description from OMDB only said "Won 1 Oscar."
+Spider-Man: Homecoming seems to have done the worst in terms of both wins and nominations for awards, while the next movie, Spider-Man: No Way Home did the best.
+Spider-Man 2 seems to have an Oscar win without an Oscar nomination, which is not possible! On doing an internet search, the film actually received 3 Oscar nominations, making it both the film in the series with the highest Oscar nominations and wins. This is due to the way we extracted the information using Regular Expressions. The description from OMDB only said "Won 1 Oscar."
+
+The next plot is a bar plot that compares the IMDb votes received by each of the selected movies. The movies are ordered in the increasing order of votes received.
 
 ```{r}
-# plot 7: 
-ggplot(movies, aes(imdbVotes, reorder(Title, imdbVotes), fill = Universe)) +
-  geom_col() + labs(y = "Movie") + ggtitle("IMDb Votes")
+# plot 7: comparing IMDb votes received by all selected movies
+ggplot(movies, aes(reorder(Title, imdbVotes), imdbVotes, fill = Universe)) +
+  geom_bar(stat = "identity") + # bar plot
+  theme(axis.text.x = element_text(angle = 90)) + # rotating the x-axis labels by 90 degrees
+  ggtitle("IMDb Votes") + # plot title
+  xlab("Movie") + ylab("IMDb Votes") # axis titles
 ```
 
-The top 3 movies based on votes are all DC movies, and are also all Batman movies. The difference between the number of votes for the movies at place 3 (Batman Begins) and place 4 (Iron Man) is huge!
+The top 3 movies based on votes are all DC movies, and are also all Batman movies. The difference between the number of votes for the movies at place 3 (Batman Begins) and place 4 (Iron Man) is huge! The second Batman movie (The Dark Knight) is the most voted film out of all the selected films.
+
+Let us do the same analysis for just the Spider-Man movies, by creating a pie chart to compare the relative number of votes. We will not use the actual numbers. Instead, we will simply rank the movies based on the number of votes they received. The slices of the pie-chart are ordered based on the number of votes received.
 
 ```{r}
-# sentiment analysis using the NRC lexicon
-bing <- get_sentiments("bing")
+# plot 8: IMDb votes received by Spider-Man movies
+ggplot(spidey, aes(x = reorder(Title, imdbVotes), y = imdbVotes, fill = Title)) + # ordering based on votes received
+  geom_bar(stat = "identity") + # start it off as a bar plot
+  coord_polar("x", start = 0) + # convert the plot to a 'polar' plot: pie chart creation
+  theme_void() + # removing the background, grid and axes
+  ggtitle("Pie Chart of IMDb Votes Received by Spider-Man Movies") # title of the plot
+```
+
+Based on the pie chart, we can see that the ranking is (decreasing order of votes received):
+1. Spider-Man
+2. Spider-Man: No Way Home
+3. Spider-Man: Homecoming
+4. Spider-Man 2
+5. Spider-Man 3
+6. Spider-Man: Far from Home
+
+The next section deals with sentiment analysis of the movie plots, as given on IMDb. We start off using the "Bing" lexicon, which simply classifies words into inducing 'positive' and 'negative' sentiments.
+
+```{r}
+# sentiment analysis using the Bing lexicon
+bing <- get_sentiments("bing") # getting the Bing lexicon data
 names(movies)
 
-plots <- movies[, c(1, 3, 9)]
-plots <- plots %>% unnest_tokens(word, Plot) %>% inner_join(bing)
+# columns chosen for sentiment analysis:
+## 1. Title (column 1)
+## 2. Plot (3)
+## 3. Universe (9)
+plots <- movies[, c(1, 3, 9)] # choosing the columns required for sentiment analysis
+# tokenizing each word in the 'Plot' columns and joining the result with the bing lexicon sentiments
+plots <- plots %>% unnest_tokens(word, Plot) %>% inner_join(bing) # join by 'word'
+# counting the number of words for each sentiment, for each universe
 plots <- plots %>% count(Universe, sentiment)
 
-p1 <- plots %>% filter(Universe == "DC")
-word_sum_dc = sum(p1$n)
-p1 <- plots %>% filter(Universe == "Marvel")
-word_sum_marvel = sum(p1$n)
-plots <- plots %>% mutate(prop_sentiment = n/word_sum_dc)
+p1 <- plots %>% filter(Universe == "DC") # filtering out only the DC movies
+word_sum_dc = sum(p1$n) # getting the total number of words in DC movies' plots
+p1 <- plots %>% filter(Universe == "Marvel") # filtering out only the Movie movies
+word_sum_marvel = sum(p1$n) # getting the total number of words in Marvel movies' plots
+
+# adding a new column containing the proportion of words in each sentiment for the DC movies
+plots <- plots %>% mutate(prop_sentiment = n/word_sum_dc) 
+# doing the same for Marvel movies
 plots$prop_sentiment[3:4] <- plots$n[3:4]/word_sum_marvel
 
-plots
-
+# plot 9: Bing sentiment plot
+# the bars are in the decreasing order of proportion of sentiment
 ggplot(plots, aes(x = prop_sentiment, y = reorder(sentiment, prop_sentiment), fill = Universe)) +
-  geom_bar(stat = "identity", position = "dodge") + xlab("Proportion of sentiment") + ylab("Sentiment")
+  geom_bar(stat = "identity", position = "dodge") + # bar plot
+  ggtitle("Bing Sentiment Analysis for MCU and DC Movie Plots - Collective") + # plot title
+  xlab("Proportion of sentiment") + ylab("Sentiment") # axis titles
 ```
 
 We can see that there is a very high proportion of negative sentiments when compared to positive sentiments for both the universes. DC seems to have a higher proportion of positive sentiment in their plots, generally, when compared to Marvel. To get more clarity, let us use the nrc lexicon for a detailed analysis of the sentiments. 
 
-```{r}
-nrc <- get_sentiments("nrc")
+We then look into more detailed sentiments using the 'NRC' lexicon.
 
-plots <- movies[, c(1, 3, 9)]
-plots <- plots %>% unnest_tokens(word, Plot) %>% inner_join(nrc)
-plots <- plots %>% count(Universe, sentiment)
+```{r}
+nrc <- get_sentiments("nrc") # getting the 'nrc' lexicon information
+
+# repeating the same steps as done with the Bing lexicon
+plots <- movies[, c(1, 3, 9)] # choosing the required columns
+plots <- plots %>% unnest_tokens(word, Plot) %>% inner_join(nrc) # tokenizing by word and joining with the lexicon table
+plots <- plots %>% count(Universe, sentiment) # getting the totals of each sentiment in each Universe
+# removing generic 'positive' and 'negative' sentiments
 plots <- plots %>% filter(sentiment != "positive", sentiment != "negative")
 
 p1 <- plots %>% filter(Universe == "DC")
 word_sum_dc = sum(p1$n)
 p1 <- plots %>% filter(Universe == "Marvel")
 word_sum_marvel = sum(p1$n)
-plots <- plots %>% mutate(prop_sentiment = n/word_sum_dc)
-plots$prop_sentiment[9:16] <- plots$n[9:16]/word_sum_marvel
+plots <- plots %>% mutate(prop_sentiment = n/word_sum_dc) # proportion of sentiments for DC movies
+plots$prop_sentiment[9:16] <- plots$n[9:16]/word_sum_marvel # proportion of sentiments for Marvel movies
 
+# plot 10: NRC sentiment plot, ordered in decreasing order of proportion of sentiment
 ggplot(plots, aes(x = prop_sentiment, y = reorder(sentiment, prop_sentiment), fill = Universe)) +
-  geom_bar(stat = "identity", position = "dodge") + xlab("Proportion of sentiment") + ylab("Sentiment")
+  geom_bar(stat = "identity", position = "dodge") + # bar plot
+  ggtitle("NRC Sentiment Analysis for MCU and DC Movie Plots - Collective") + # plot title
+  xlab("Proportion of Sentiment") + ylab("Sentiment") # axis titles
 ```
 
 Both universes heavily use words that imply fear and anger. Marvel uses more fear-related words compared to DC, while DC uses more anger-related words when compared to Marvel. Marvel has more words that relate to trust, sadness and disgust when compared to DC. DC has a significantly higher proportion of words that relate to joy and surprise, when compared to Marvel.
