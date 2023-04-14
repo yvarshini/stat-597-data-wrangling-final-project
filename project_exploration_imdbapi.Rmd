@@ -105,9 +105,11 @@ for (i in 1:length(Marvel)) {
 }
 
 marvel.summary %>% head() # need to pivot wider
+# pivot wider
 marvel.summary <- pivot_wider(marvel.summary, names_from = Ratings.Source, values_from = Ratings.Value)
 marvel.summary %>% head()
 
+# repeating the same thing to create a summary dataframe for DC movies
 dc.summary <- data.frame(matrix(ncol = 25, nrow = 0))
 colnames(dc.summary) <- DC[1] %>% fromJSON() %>% names()
 
@@ -121,22 +123,28 @@ dc.summary <- pivot_wider(dc.summary, names_from = Ratings.Source, values_from =
 dc.summary %>% head()
 ```
 
+This next section deals with processing the data obtained from the API. Data has been cleaned, for example, by removing commas, '$' and '%' signs, and converting character-type columns with numeric values to double-type columns. Details of award nominations and wins have been extracted from the 'Awards' column using Regular Expressions (RegEx).
+
 ```{r}
 # DATA PROCESSING
 
-# adding a new column to both the dataframes
+# adding a new column to both the dataframes 
+# to identify which universe a movie belongs to
 marvel.summary$Universe <- rep("Marvel", dim(marvel.summary)[1])
 dc.summary$Universe <- rep("DC", dim(dc.summary)[1])
 
-# combining the two dataframes into one
+# combining the two dataframes into one for ease of analysis
 movies <- rbind(marvel.summary, dc.summary)
 
-l = dim(movies)[1]
-movies.wins <- rep("", l)
-movies.noms <- rep("", l)
-movies.Owins <- rep("", l)
-movies.Onoms <- rep("", l)
+l = dim(movies)[1] # total number of movies
+# creating lists to hold the values extracted using RegEx
+movies.wins <- rep("", l) # total wins
+movies.noms <- rep("", l) # total nominations
+movies.Owins <- rep("", l) # Oscar wins
+movies.Onoms <- rep("", l) # Oscar nominations
 
+# the award nomination and win information is extracted for each movie using a loop
+# and the values are stored in the corresponding lists
 for (i in 1:l) {
   movies.wins[i] = str_extract(str_extract(movies$Awards[i], "[0-9]+ win"), "[0-9]+") # extract number of wins
   movies.noms[i] = str_extract(str_extract(movies$Awards[i], "[0-9]+ nomination"), "[0-9]+") # extract number of nominations
@@ -144,18 +152,26 @@ for (i in 1:l) {
   movies.Owins[i] = str_extract(str_extract(movies$Awards[i], "Won [0-9]+ Oscar"), "[0-9]+") # extract number of Oscar wins
 }
 
+# adding the values in these lists to the dataframe as new columns
 movies$Wins = movies.wins
 movies$Nominations = movies.noms
 movies$OscarWins = movies.Owins
 movies$OscarNominations = movies.Onoms
+
 # some more processing
-movies$imdbVotes <- gsub(",", "", movies$imdbVotes)
-movies$BoxOffice <- gsub(",", "", movies$BoxOffice)
-movies$BoxOffice <- gsub("[$]", "", movies$BoxOffice)
-movies$Runtime <- gsub(" min", "", movies$Runtime)
-movies$`Internet Movie Database` <- gsub("/10", "", movies$`Internet Movie Database`)
-movies$`Rotten Tomatoes` <- gsub("[%]", "", movies$`Rotten Tomatoes`)
-movies$Metacritic <- gsub("/100", "", movies$Metacritic)
+# this processing allows us to convert the character-type columns to numeric-type in the next step
+movies$imdbVotes <- gsub(",", "", movies$imdbVotes) # removing commas in the number of votes column
+movies$BoxOffice <- gsub(",", "", movies$BoxOffice) # removing commas in the box office collections column
+# the '$' sign has been enclosed in square brackets in order to let R identify it as a character
+# and not as the special character it is generally used as
+# this is similar to 'escaping' the special character '$'
+movies$BoxOffice <- gsub("[$]", "", movies$BoxOffice) # removing the '$' sign in the box office collections column
+movies$Runtime <- gsub(" min", "", movies$Runtime) # removing the ' min' suffix after the movie runtime
+movies$`Internet Movie Database` <- gsub("/10", "", movies$`Internet Movie Database`) # removing the denominator for IMD ratings
+# the '%' sign is yet another special character
+# so it has been enclosed in square brackets to escape it
+movies$`Rotten Tomatoes` <- gsub("[%]", "", movies$`Rotten Tomatoes`) # removing the '%' sign in Rotten Tomatoes ratings
+movies$Metacritic <- gsub("/100", "", movies$Metacritic) # removing the denominator for Metacritic ratings
 
 # replacing 'NA' with 0 and converting the columns to numeric types
 movies <- movies %>% mutate_at(c(5, 15:17, 21, 25:27, 29:32), ~replace_na(., "0")) %>% mutate_at(c(5, 15:17, 21, 25:27, 29:32), as.numeric)
@@ -164,48 +180,94 @@ movies %>% head()
 # some cells where the numeric field values were "N/A" will be coerced to NA when using as.numeric() - this is ok, since they are null values originally. None of the numeric values are being lost.
 ```
 
+After taking a look at the structure of the processed data, it can be seen that not all the columns are necessary for further analysis. There are also some columns that have redundant (repeated) values; for example, the columns 'imdbRating' and 'Internet Movie Database' have the same information. Columns 'Metascore' and 'Metacritic' also contain the same information. Only one out of each set of repeated data columns is kept, and the others are removed.
+
+The final columns chosen are:
+1. Title (column index 1)
+2. Runtime (5)
+3. Plot (10)
+4. imdbRating (16)
+5. imdbVotes (17)
+6. BoxOffice (21)
+7. Rotten Tomatoes (26)
+8. Metacritic (27)
+9. Universe (28)
+10. Wins (29)
+11. Nominations (30)
+12. OscarWins (31)
+13. OscarNominations (32)
+
 ```{r}
 # selecting only the columns needed for further analysis
 movies <- movies[, c(1, 5, 10, 16:17, 21, 26:32)]
 head(movies, 3)
 ```
 
+Now that we have our data in its final form, we will start visualizing the data in order to draw some inferences from the data.
+
+The first plot is a column plot that we use to compare the runtimes of all of the movies. The columns have been filled based on which universe the film belongs to. The plot has been arranged in the decreasing order of runtime.
+
 ```{r}
-ggplot(movies, aes(Runtime, reorder(Title, Runtime), fill = Universe)) +
-  geom_col() + labs(y = "Movie")
+# plot 1: comparing the runtimes of all the films
+ggplot(movies, aes(Runtime, reorder(Title, Runtime), # ordering the titles according to their runtimes
+                   fill = Universe)) +
+  geom_col() + # column plot
+  ggtitle("Runtime of Selected Marvel and DC Movies") + # plot title
+  labs(y = "Movie", x = "Runtime (in minutes)") # x and y titles
 ```
 
 From this plot, we can see that most DC movies have a longer runtime when compared to Marvel movies, in the 10 movie series we have chosen. We also see that in the DC universe movies, the 'Shazam!' films have the lowest runtimes.
 
+The next few plots help us visualize the ratings of each movie from IMDb, Rotten Tomatoes and Metacritic. These plots, are again, column plots. All these plots have been arranged in the decreasing order of ratings and filled based on which universe the movies belong to.
+
 ```{r}
-par(mfrow = c(2, 2))
+# plot 2: comparing the IMDb ratings for all the selected movies
+ggplot(movies, aes(imdbRating, reorder(Title, imdbRating), # ordering the titles in order of ratings
+                   fill = Universe)) + # filling the columns based on the universe
+  geom_col() + # column plot
+  labs(y = "Movie", x = "IMDb Rating (out of 10)") + # adding custom axis titles
+  ggtitle("IMDb Ratings") # adding the plot title
 
-ggplot(movies, aes(imdbRating, reorder(Title, imdbRating), fill = Universe)) +
-  geom_col() + labs(y = "Movie") + ggtitle("IMDb Ratings")
-
+# plot 3: comparing the Rotten Tomatoes ratings for all the selected movies
 ggplot(movies, aes(`Rotten Tomatoes`, reorder(Title, `Rotten Tomatoes`), fill = Universe)) +
-  geom_col() + labs(y = "Movie") + ggtitle("Rotten Tomatoes Ratings")
+  geom_col() + labs(y = "Movie", x = "Rotten Tomatoes Rating (in %)") + ggtitle("Rotten Tomatoes Ratings")
 
+# plot 4: comparing the Metacritic ratings for all the selected movies
 ggplot(movies, aes(Metacritic, reorder(Title, Metacritic), fill = Universe)) +
-  geom_col() + labs(y = "Movie") + ggtitle("Metacritic Score")
+  geom_col() + labs(y = "Movie", x = "Metacritic Rating (out of 100)") + ggtitle("Metacritic Score")
 ```
 
-Based on these 3 ratings, we can't say that movies of one Universe do better than another!
+Based on these 3 ratings, we can't say that movies of one Universe do better than another. The rankings of the movies varies based on which rating source we use. Interestingly, 'The Dark Knight' is the best rated movie across all three rating sources! We can also see that two movies - Spider-Man: No Way Home and Captain America: Civil War - have no ratings on Rotten Tomatoes.
+
+Let us now take the 6 movies from the Spider-Man film series and perform some analysis.
+The plot generated compares the runtime of each movie with the Metacritic ratings and box office earnings. Each line is colored differently in order to make the graph easy to interpret. The colors have clearly been labelled in the legend. The x-axis labels have been rotated to appear vertically since they will overlap if shown horizontally.
 
 ```{r}
-# let us take the Spiderman series and check some results out
-spidey <- filter(movies, grepl("Spider-Man", Title))
+# grepl() allows us to filter titles that have the string "Spider-Man" in them
+spidey <- filter(movies, grepl("Spider-Man", Title)) 
+# take a look at the obtained dataset to confirm if it is correct
 spidey # these are in order of their release dates
 
-# let us compare the Metacritic ratings with the runtime
+# plot 5: comparing the Metacritic ratings, the runtime and the box office collections
 ggplot(spidey) +
-  geom_line(mapping = aes(Title, Metacritic, group = 1, color = "Metacritic Rating")) + geom_point(mapping = aes(Title, Metacritic, group = 1, color = "Metacritic Rating")) + geom_line(mapping = aes(Title, Runtime, group = 1, color = "Runtime")) + geom_point(mapping = aes(Title, Runtime, group = 1, color = "Runtime")) + theme(axis.text.x = element_text(angle = 90))
+  # adding line and point plots of the Metacritic ratings
+  geom_line(mapping = aes(Title, Metacritic, group = 1, color = "Metacritic Rating (out of 100)")) + # line plot
+  geom_point(mapping = aes(Title, Metacritic, group = 1, color = "Metacritic Rating (out of 100)")) + # plot each point
+  # adding line and point plots of the Runtime
+  geom_line(mapping = aes(Title, Runtime, group = 1, color = "Runtime (in minutes)")) + 
+  geom_point(mapping = aes(Title, Runtime, group = 1, color = "Runtime (in minutes)")) + 
+  # adding line and point plots of the Box Office earning
+  # the earnings have been divided by 10,000,000 in order to bring them on scale with the other two plots
+  geom_line(mapping = aes(Title, BoxOffice/10000000, group = 1, color = "Box Office Collection (in 10^7 dollars)")) + geom_point(mapping = aes(Title, BoxOffice/10000000, group = 1, color = "Box Office Collection (in 10^7 dollars)")) + theme(axis.text.x = element_text(angle = 90)) + # rotating the x-axis labels by 90 degrees
+  ggtitle("Comparing Runtime with Metacritic Ratings and Box Office Collections") + # plot title
+  xlab("Movie") + ylab("Value") # axis titles
 ```
 
-Interestingly, we see that the Metacritic ratings generally go down with increasing runtimes and vice-versa. This is not strictly the case, however! Spider-Man 2 is also the highest-rated movie of the series, based on Metacritic ratings.
+Interestingly, we see that the Metacritic ratings generally go down with increasing runtimes and vice-versa. This is not strictly the case, however! Spider-Man 2 is also the highest-rated movie of the series, based on Metacritic ratings. There is no noticeable trend in the box office earnings. 
+It is noted that there is an extreme increase in the earnings of 'Spider-Man: No Way Home' compared to the other films in the series. This could be because it was released just as COVID restrictions were being lifted, which made people more excited than normal to watch the film in theatres after being cooped up at home for around two years.
 
 ```{r}
-# let us compare wins and nominations
+# plot 6: comparing award wins and nominations
 ggplot(spidey) +
   geom_line(aes(Title, Nominations, group = 1, color = "Nominations")) + geom_point(aes(Title, Nominations, group = 1, color = "Nominations")) + geom_line(aes(Title, Wins, group = 1, color = "Wins")) + geom_point(aes(Title, Wins, group = 1, color = "Wins")) + geom_line(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + geom_point(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + geom_line(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + geom_point(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + theme(axis.text.x = element_text(angle = 90))
 ```
@@ -213,6 +275,7 @@ ggplot(spidey) +
 Spider-Man: Homecoming seems to have done the worst in terms of both wins and nominations for awards, while the next movie, Spider-Man: No Way Home did the best. However, Spider-Man 2 seems to have an Oscar win without an Oscar nomination, which is not possible! On doing an internet search, the film actually received 3 Oscar nominations, making it both the film in the series with the highest Oscar nominations and wins. This is due to the way we extracted the information using Regular Expressions. The description from OMDB only said "Won 1 Oscar."
 
 ```{r}
+# plot 7: 
 ggplot(movies, aes(imdbVotes, reorder(Title, imdbVotes), fill = Universe)) +
   geom_col() + labs(y = "Movie") + ggtitle("IMDb Votes")
 ```
