@@ -16,10 +16,34 @@ library(curl)
 library(jsonlite)
 library(RCurl)
 library(ggplot2)
+library(tidytext)
+library(textdata)
+library(stringr)
 ```
 
+ANALYSIS OF A FEW MARVEL AND DC MOVIES USING IMDB DATA
+
+This section gets information from the OMDB API for 5 film series each from the Marvel Comic Universe and the DC universe. The film series chosen are:
+
+Marvel Comic Universe:
+1. Captain America
+2. Iron Man
+3. Thor
+4. Spider-Man
+5. The Hulk
+
+DC:
+1. Wonder Woman
+2. Batman (The Dark Knight Trilogy)
+3. Superman
+4. Aquaman
+5. Shazam!
+
+The data is collected for the movies that have been released, as of date.
+
 ```{r}
-# IMDb movie IDs
+# Getting IMDb movie IDs from the IMDb websites. This was done manually.
+# The IDs of films belonging to separate film series are put in separate lists.
 
 # MARVEL
 capt.america <- c("tt0458339", "tt1843866", "tt3498820")
@@ -36,72 +60,25 @@ aquaman <- c("tt1477834") #, "tt9663764")
 shazam <- c("tt0448115", "tt10151854")
 ```
 
+Once we have the IMDb movie IDs for the movies, we use the OMDB API to extract whatever information is available for each film. An API key was obtained for the OMDB API through their website (www.omdbapi.com). This API key has been used to make requests to the API.
+
 ```{r}
-# OMDB API - extracting film information
+# API key obtained through the website
 mykey = "4ce5d1e6"
+# The base URL to access the API and make requests to it
 baseurl <- "http://www.omdbapi.com"
 
-captainAmerica <- rep("", length(capt.america))
-for (i in 1:length(capt.america)) {
-  captainAmerica[i] <- getForm(uri = baseurl, apikey = mykey, i = capt.america[i])
-}
-
-ironMan <- rep("", length(iron.man))
-for (i in 1:length(iron.man)) {
-  ironMan[i] <- getForm(uri = baseurl, apikey = mykey, i = iron.man[i])
-}
-
-Thor <- rep("", length(thor))
-for (i in 1:length(thor)) {
-  Thor[i] <- getForm(uri = baseurl, apikey = mykey, i = thor[i])
-}
-
-Spiderman <- rep("", length(spiderman))
-for (i in 1:length(spiderman)) {
-  Spiderman[i] <- getForm(uri = baseurl, apikey = mykey, i = spiderman[i])
-}
-
-Hulk <- rep("", length(hulk))
-for (i in 1:length(hulk)) {
-  Hulk[i] <- getForm(uri = baseurl, apikey = mykey, i = hulk[i])
-}
-
-wonderWoman <- rep("", length(wonder.woman))
-for (i in 1:length(wonder.woman)) {
-  wonderWoman[i] <- getForm(uri = baseurl, apikey = mykey, i = wonder.woman[i])
-}
-
-Batman <- rep("", length(batman.dkt))
-for (i in 1:length(batman.dkt)) {
-  Batman[i] <- getForm(uri = baseurl, apikey = mykey, i = batman.dkt[i])
-}
-
-Superman <- rep("", length(superman))
-for (i in 1:length(superman)) {
-  Superman[i] <- getForm(uri = baseurl, apikey = mykey, i = superman[i])
-}
-
-Aquaman <- rep("", length(aquaman))
-for (i in 1:length(aquaman)) {
-  Aquaman[i] <- getForm(uri = baseurl, apikey = mykey, i = aquaman[i])
-}
-
-Shazam <- rep("", length(shazam))
-for (i in 1:length(shazam)) {
-  Shazam[i] <- getForm(uri = baseurl, apikey = mykey, i = shazam[i])
-}
-```
-
-```{r}
-# joining the movies by comic universe
+# joining the movies by comic universe to create 
+# comprehensive lists for all the selected Marvel and DC films
 marvel <- c(capt.america, iron.man, thor, spiderman, hulk)
 dc <- c(wonder.woman, batman.dkt, superman, aquaman, shazam)
 
+# getting API response for all Marvel films
 Marvel <- rep("", length(marvel))
 for (i in 1:length(marvel)) {
   Marvel[i] <- getForm(uri = baseurl, apikey = mykey, i = marvel[i])
 }
-
+# getting API response for all DC films
 DC <- rep("", length(dc))
 for (i in 1:length(dc)) {
   DC[i] <- getForm(uri = baseurl, apikey = mykey, i = dc[i])
@@ -109,12 +86,21 @@ for (i in 1:length(dc)) {
 ```
 
 ```{r}
-# summary dataframes
-marvel.summary <- data.frame(matrix(ncol = 25, nrow = 0)) # fromJSON() response has 25 attributes
-colnames(marvel.summary) <- Marvel[1] %>% fromJSON() %>% names()
+# creating summary dataframes
 
+## the response received from the API is in the form of JSON objects
+## we use fromJSON() to parse the JSON objects and convert these responses into named lists
+
+## we start off by creating an empty dataframe with 0 rows and 
+## number of columns equal to the number of keys in the JSON response
+marvel.summary <- data.frame(matrix(ncol = 25, nrow = 0)) # fromJSON() response has 25 attributes
+colnames(marvel.summary) <- Marvel[1] %>% fromJSON() %>% names() # getting the names from the named lists
+
+## populating the Marvel dataframe with information from the API
 for (i in 1:length(Marvel)) {
+  ## this line of code puts the JSON response into the form of a dataframe row
   marvel.summary.temp <- do.call("cbind", fromJSON(Marvel[i]))
+  ## binding the information on the current movie with all the movies we have so far
   marvel.summary <- rbind(marvel.summary, marvel.summary.temp)
 }
 
@@ -234,6 +220,46 @@ ggplot(movies, aes(imdbVotes, reorder(Title, imdbVotes), fill = Universe)) +
 The top 3 movies based on votes are all DC movies, and are also all Batman movies. The difference between the number of votes for the movies at place 3 (Batman Begins) and place 4 (Iron Man) is huge!
 
 ```{r}
-# sentiment analysis
+# sentiment analysis using the NRC lexicon
+bing <- get_sentiments("bing")
+names(movies)
+
+plots <- movies[, c(1, 3, 9)]
+plots <- plots %>% unnest_tokens(word, Plot) %>% inner_join(bing)
+plots <- plots %>% count(Universe, sentiment)
+
+p1 <- plots %>% filter(Universe == "DC")
+word_sum_dc = sum(p1$n)
+p1 <- plots %>% filter(Universe == "Marvel")
+word_sum_marvel = sum(p1$n)
+plots <- plots %>% mutate(prop_sentiment = n/word_sum_dc)
+plots$prop_sentiment[3:4] <- plots$n[3:4]/word_sum_marvel
+
+plots
+
+ggplot(plots, aes(x = prop_sentiment, y = reorder(sentiment, prop_sentiment), fill = Universe)) +
+  geom_bar(stat = "identity", position = "dodge") + xlab("Proportion of sentiment") + ylab("Sentiment")
 ```
 
+We can see that there is a very high proportion of negative sentiments when compared to positive sentiments for both the universes. DC seems to have a higher proportion of positive sentiment in their plots, generally, when compared to Marvel. To get more clarity, let us use the nrc lexicon for a detailed analysis of the sentiments. 
+
+```{r}
+nrc <- get_sentiments("nrc")
+
+plots <- movies[, c(1, 3, 9)]
+plots <- plots %>% unnest_tokens(word, Plot) %>% inner_join(nrc)
+plots <- plots %>% count(Universe, sentiment)
+plots <- plots %>% filter(sentiment != "positive", sentiment != "negative")
+
+p1 <- plots %>% filter(Universe == "DC")
+word_sum_dc = sum(p1$n)
+p1 <- plots %>% filter(Universe == "Marvel")
+word_sum_marvel = sum(p1$n)
+plots <- plots %>% mutate(prop_sentiment = n/word_sum_dc)
+plots$prop_sentiment[9:16] <- plots$n[9:16]/word_sum_marvel
+
+ggplot(plots, aes(x = prop_sentiment, y = reorder(sentiment, prop_sentiment), fill = Universe)) +
+  geom_bar(stat = "identity", position = "dodge") + xlab("Proportion of sentiment") + ylab("Sentiment")
+```
+
+Both universes heavily use words that imply fear and anger. Marvel uses more fear-related words compared to DC, while DC uses more anger-related words when compared to Marvel. Marvel has more words that relate to trust, sadness and disgust when compared to DC. DC has a significantly higher proportion of words that relate to joy and surprise, when compared to Marvel.
