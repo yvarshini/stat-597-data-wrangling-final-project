@@ -1,0 +1,987 @@
+---
+title: "Marvel_Fandom"
+author: "Manisha Gayatri Damera"
+date: "2023-04-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## SENTIMENT ANALYSIS OF FEW MARVEL AND DC UNIVERSE CHARACTERS USING FANDOM WED DATA.
+
+This part of the project focusses on implementing the sentiment analysis on the characters, targetting the powers and abilities of the characters chosen from both DC and Marvel. 
+
+The information is collected from the Fandom official site. Using web scraping the character data i.e 'Powers and Abilities' are extracted from the Marvel Universe and the DC universe. The characters chosen are:
+
+Marvel Comic Universe:
+1. Captain America
+2. Iron Man
+3. Thor
+4. Spider-Man
+5. The Hulk
+
+DC:
+1. Wonder Woman
+2. Batman (The Dark Knight Trilogy)
+3. Superman
+4. Aquaman
+5. Flash
+
+
+Loading required libraries
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(rvest)
+library(XML)
+library(tidyverse)
+library(RSentiment)
+library(stringr)
+library(ggplot2)
+library(wordcloud)
+library(tidytext)
+library(textdata)
+library(tm)
+library(ggthemes)
+```
+
+## Part 'A' - Extracting the information about characters chosen above from the FANDOM website. 
+
+Extracting all Characters from Fandom (MARVEL & DC)
+- For each of the character we get the web address and for scraping the data within 'Abilities' section, we give the start phrase and the end phrase to extract the specific powers section. Then we clean the data to extract the adjectives describing the abilities/ powers/weaknesses of the character.
+In this section regex is used to identify the required powers from the text. 
+
+1. MARVEL CHARACTERS - FANDOM
+
+
+a) Captain Marvel
+```{r}
+cap_america_page <- read_html("https://marvel.fandom.com/wiki/Steven_Rogers_(Earth-616)")
+cap_am_text <- cap_america_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Captain America's powers, abilities,"
+end_phrase <- "some types of trains and utility vehicles."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(cap_am_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), cap_am_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+cap_am_abilities <- regmatches(cap_am_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    cap_am_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+cap_am_abilities <- lapply(cap_am_abilities, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+captain_america <- unlist(cap_am_abilities)
+```
+
+```{r}
+# Split text by "\n" into new elements
+cap_america_split <- lapply(cap_am_abilities, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+cap_am_abilities <- unlist(cap_america_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+cap_am_abilities <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", cap_am_abilities)
+
+# Remove spaces at the end of elements
+cap_am_abilities <- gsub("\\s+$", "", cap_am_abilities)
+```
+
+
+b) Iron Man
+```{r}
+iron_man_page <- read_html("https://marvel.fandom.com/wiki/Anthony_Stark_(Earth-616)")
+iron_man_text <- iron_man_page %>% 
+  html_nodes(".page__main") %>% 
+  html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Super-Genius Intelligence"
+end_phrase <- "his strong suit in particular."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(iron_man_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), iron_man_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+iron_man_abilities <- regmatches(iron_man_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    iron_man_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+iron_man_abilities <- lapply(iron_man_abilities, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+iron_man <- unlist(iron_man_abilities)
+```
+
+```{r}
+# Split text by "\n" into new elements
+iron_man_split <- lapply(iron_man_abilities, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+iron_man_abilities <- unlist(iron_man_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+iron_man_abilities <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", iron_man_abilities)
+
+# Remove spaces at the end of elements
+iron_man_abilities <- gsub("\\s+$", "", iron_man_abilities)
+```
+
+
+c) Hulk
+```{r}
+hulk_page <- read_html("https://marvel.fandom.com/wiki/Bruce_Banner_(Earth-616)#Attributes")
+hulk_text <- hulk_page %>% 
+  html_nodes(".page__main") %>% 
+  html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "There ain't many around who can describe what it feels like to get "
+end_phrase <- "proportional to the Hulk's rage level."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(hulk_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), hulk_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+hulk_abilities <- regmatches(hulk_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    hulk_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+hulk_abilities <- lapply(hulk_abilities, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+hulk <- unlist(hulk_abilities)
+```
+
+```{r}
+# Split text by "\n" into new elements
+hulk_split <- lapply(hulk_abilities, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+hulk_abilities <- unlist(hulk_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+hulk_abilities <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", hulk_abilities)
+
+# Remove spaces at the end of elements
+hulk_abilities <- gsub("\\s+$", "", hulk_abilities)
+```
+
+
+d) SpiderMan
+```{r}
+spiderman_page <- read_html("https://marvel.fandom.com/wiki/Peter_Parker_(Earth-616)")
+spiderman_text <- spiderman_page %>% 
+  html_nodes(".page__main") %>% 
+  html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Spider Physiology: Spider-Man possesses "
+end_phrase <- "(due to his superheroics)"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(spiderman_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), spiderman_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+spiderman_abilities <- regmatches(spiderman_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    spiderman_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+spiderman_abilities <- lapply(spiderman_abilities, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+spiderman <- unlist(spiderman_abilities)
+```
+
+```{r}
+# Split text by "\n" into new elements
+spiderman_split <- lapply(spiderman_abilities, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+spiderman_abilities <- unlist(spiderman_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+spiderman_abilities <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", spiderman_abilities)
+
+# Remove spaces at the end of elements
+spiderman_abilities <- gsub("\\s+$", "", spiderman_abilities)
+```
+
+
+
+e) Thor
+```{r}
+thor_page <- read_html("https://marvel.fandom.com/wiki/Thor_Odinson_(Earth-616)")
+thor_text <- thor_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Thor's powers, abilities and strength"
+end_phrase <- "Odinforce once a year."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(thor_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), thor_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+thor_abilities <- regmatches(thor_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    thor_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+thor_abilities <- lapply(thor_abilities, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+thor <- unlist(thor_abilities)
+```
+
+```{r}
+# Split text by "\n" into new elements
+thor_split <- lapply(thor_abilities, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+thor_abilities <- unlist(thor_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+thor_abilities <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", thor_abilities)
+
+# Remove spaces at the end of elements
+thor_abilities <- gsub("\\s+$", "", thor_abilities)
+```
+
+
+2. DC CHARACTERS - FANDOM
+
+a) Wonder Woman
+```{r}
+# Load the Wonder Woman Fandom URL
+wonderwoman_page <- read_html("https://dc.fandom.com/wiki/Wonder_Woman_(Diana_Prince)")
+# Extract overall text
+ww_text <- wonderwoman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Articles.Powers and Abilities"
+end_phrase <- "ThrowingParaphernalia"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(ww_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), ww_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+ww_pow_ab <- regmatches(ww_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    ww_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+ww_pow_ab <- lapply(ww_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+ww_pow_ab_all <- unlist(ww_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+ww_pow_ab_split <- lapply(ww_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+ww_pow_ab <- unlist(ww_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+ww_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", ww_pow_ab)
+
+# Remove spaces at the end of elements
+ww_pow_ab <- gsub("\\s+$", "", ww_pow_ab)
+```
+
+
+b) Batman
+```{r}
+# Load the Batman Fandom URL
+batman_page <- read_html("https://dc.fandom.com/wiki/Batman_(Bruce_Wayne)")
+
+# Extract overall text
+b_text <- batman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Articles.Powers and"
+end_phrase <- "with immense precision."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(b_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), b_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+b_pow_ab <- regmatches(b_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    b_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+b_pow_ab <- lapply(b_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+b_pow_ab_all <- unlist(b_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+b_pow_ab_split <- lapply(b_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+b_pow_ab <- unlist(b_pow_ab_split)
+
+```
+
+c) Superman
+```{r}
+# Load the Superman Fandom URL
+superman_page <- read_html("https://dc.fandom.com/wiki/Superman_(Clark_Kent)")
+# Extract overall text
+s_text <- superman_page %>% html_nodes(".page__main") %>% html_text()
+#s_text
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Natasha Irons as a way to properly research and develop new technologies for the benefit of mankind,"
+end_phrase <- "less powerful than an average healthy Kryptonian until"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(s_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), s_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+s_pow_ab <- regmatches(s_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    s_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+s_pow_ab <- lapply(s_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+s_pow_ab_all <- unlist(s_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+s_pow_ab_split <- lapply(s_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+s_pow_ab <- unlist(s_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+s_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", s_pow_ab)
+
+# Remove spaces at the end of elements
+s_pow_ab <- gsub("\\s+$", "", s_pow_ab)
+
+```
+
+
+d) Aquaman
+```{r}
+# Load the Aquaman Fandom URL
+aquaman_page <- read_html("https://dc.fandom.com/wiki/Aquaman_(Arthur_Curry)")
+# Extract overall text
+a_text <- aquaman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "he would escape and kill"
+end_phrase <- "Arthur can speak some"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(a_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), a_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+a_pow_ab <- regmatches(a_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    a_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+a_pow_ab <- lapply(a_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+a_pow_ab_all <- unlist(a_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+a_pow_ab_split <- lapply(a_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+a_pow_ab <- unlist(a_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+a_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", a_pow_ab)
+
+# Remove spaces at the end of elements
+a_pow_ab <- gsub("\\s+$", "", a_pow_ab)
+
+```
+
+e) Flash
+```{r}
+# Load the Flash Fandom URL
+flash_page <- read_html("https://dc.fandom.com/wiki/Flash_(Barry_Allen)")
+# Extract overall text
+f_text <- flash_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "lash Family as Barry carried Iris'"
+end_phrase <- "Aquaman to a draw in a underwater"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(f_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), f_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+f_pow_ab <- regmatches(f_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    f_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+f_pow_ab <- lapply(f_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+f_pow_ab_all <- unlist(f_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+f_pow_ab_split <- lapply(f_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+f_pow_ab <- unlist(f_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+f_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", f_pow_ab)
+
+# Remove spaces at the end of elements
+f_pow_ab <- gsub("\\s+$", "", f_pow_ab)
+
+```
+
+
+## Part 'B' - Cleaning and Tidying the extracted text. Converting the text dataframe into tibble. 
+
+The text extracted is cleaned by removing stop words, numbers, punctuations etc. A function is written to implement this tidying.
+
+```{r}
+cleaning <- function(text_data) {
+  text = text_data$text
+  text_data %>% 
+    mutate(text = tolower(text),
+          text =removeWords(text,stop_words$word),
+          text =str_replace_all(text,"[,'`$+]", ""),
+          text =str_replace_all(text,"[[:punct:]]", " "),
+          text =str_replace_all(text,'[[:digit:]]+', " "),
+          text =str_replace_all(text,"[[:space:]]+", " "), text = trimws(text))
+}
+```
+
+```{r}
+
+cap_am_tb <- tibble(text = cap_am_abilities) 
+iron_man_tb <- tibble(text = iron_man_abilities) 
+hulk_tb <- tibble(text = hulk_abilities) 
+spiderman_tb <- tibble(text = spiderman_abilities) 
+thor_tb <- tibble(text = thor_abilities) 
+
+
+cap_am_clean <- cleaning(cap_am_tb) 
+hulk_clean <- cleaning(hulk_tb) 
+spiderman_clean <- cleaning(spiderman_tb) 
+thor_clean <- cleaning(thor_tb) 
+iron_clean <- cleaning(iron_man_tb) 
+```
+
+```{r}
+wonder_women_tb <- tibble(text = ww_pow_ab) 
+batman_tb <- tibble(text = b_pow_ab) 
+superman_tb <- tibble(text = s_pow_ab) 
+aquaman_tb <- tibble(text = a_pow_ab) 
+flash_tb <- tibble(text = f_pow_ab) 
+
+
+wonder_women_clean <- cleaning(wonder_women_tb) 
+batman_clean <- cleaning(batman_tb) 
+superman_clean <- cleaning(superman_tb) 
+aquaman_clean <- cleaning(aquaman_tb) 
+flash_clean <- cleaning(flash_tb) 
+```
+
+## Part 'C' - Tokenization of the text and mutating the 'Character' and 'Universe' field for converting into dataframes. And cleaning the words excluding name words, and other common words.
+
+```{r}
+
+cap_am_mar <- cap_am_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Captian_America")
+
+iron_man_mar <- iron_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Iron_Man")
+
+hulk_mar <- hulk_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Hulk")
+
+spider_man_mar <- spiderman_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Spider_Man")
+
+thor_mar <- thor_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Thor")
+```
+```{r}
+wonder_women_dc <- wonder_women_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Wonder-Women")
+
+batman_dc <- batman_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Batman")
+
+superman_dc <- superman_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Superman")
+
+aquaman_dc <- aquaman_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Aquaman")
+
+flash_dc <- flash_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Flash")
+```
+
+```{r}
+Marvel_char <- bind_rows(cap_am_mar, iron_man_mar, spider_man_mar, hulk_mar, thor_mar) %>%
+  mutate(Universe = "Marvel")
+
+Marvel_words <- bind_rows(cap_am_clean, iron_clean, hulk_clean, thor_clean, spiderman_clean)
+```
+
+```{r}
+DC_char <- bind_rows(wonder_women_dc, batman_dc, superman_dc, aquaman_dc, flash_dc) %>%
+  mutate(Universe = "DC")
+
+DC_words <- bind_rows(wonder_women_clean, batman_clean, superman_clean, aquaman_clean, flash_clean)
+```
+
+```{r}
+Marvel_char
+```
+```{r}
+universal_char <- bind_rows(Marvel_char, DC_char)
+universal_words <- bind_rows(Marvel_words, DC_words)
+```
+
+
+```{r}
+head(universal_char)
+```
+
+```{r}
+exem1 <- c('hulk', 'spiderman', 'thor', 'iron', 'captain', 'spider', 'vol', 'ability', 'peter','factor', 'stark', 'tony', 'avengers')
+
+
+Marvel_common_words <- Marvel_words %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Universe = "Marvel") %>%
+  filter(!word %in% exem, n >5)
+
+head(Marvel_common_words)
+
+DC_common_words <- DC_words %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Universe = "DC") %>%
+  filter(!word %in% exem)
+
+head(DC_common_words)
+
+universal_common_words <- bind_rows(Marvel_common_words, DC_common_words)
+```
+
+
+## Part 'D' - SENTIMENT ANALYSIS OF POWERS/WEAKNESSES OF MARVEL AND DC CHARACTERS.
+
+```{r}
+nrc_words <- get_sentiments("nrc")
+afinn_words <- get_sentiments("afinn")
+bing_words <- get_sentiments("bing")
+
+affin_negative<-get_sentiments("afinn") %>% filter(value<0)
+affin_positive<-get_sentiments("afinn") %>% filter(value>0)
+bing_positive<-get_sentiments("bing") %>% filter(sentiment=="positive")
+bing_negative<-get_sentiments("bing") %>% filter(sentiment=="negative")
+
+```
+
+```{r}
+library(ggbeeswarm)
+universal_char %>%
+  inner_join(affin_positive) %>%
+  select(Character, Universe, value) %>%
+  group_by(Character, Universe) %>%
+  ggplot(aes(Character, value, color = Character)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of DC and Marvel afinn sentiments score") +
+  xlab("Character") +
+  ylab("afinn value") +
+  theme_minimal() +
+  facet_wrap(~Universe, ncol = 1) +
+  theme(axis.text.x=element_text(size=7))
+  
+```
+
+
+
+```{r}
+
+universal_common_words %>%
+  select(word, n, Universe) %>%
+  inner_join(get_sentiments('nrc')) %>%
+  filter(!sentiment %in% c('surprise')) %>%
+  filter(!sentiment %in% c('disgust')) %>%
+  group_by(Universe, sentiment)%>%
+    count()%>%
+      ggplot(aes(x=reorder(sentiment,X = n),y=n,color=sentiment))+geom_col()+guides(fill=F)+
+        coord_flip()+
+        theme_wsj()+xlab("")+ylab("NRC Sentiments")+ggtitle("NRC Sentiments")+ theme(plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(~Universe, ncol = 2) +
+  theme(axis.text.y=element_text(size=10)) 
+```
+
+```{r}
+library(ggrepel) 
+
+plot_words_1 <- universal_common_words %>%
+  filter(Universe == "Marvel") %>%
+  select(word)%>%
+  inner_join(get_sentiments('nrc'))%>%
+  group_by(sentiment) %>%
+  count(word, sort = TRUE) %>%
+  arrange(desc(n)) %>%
+  slice(seq_len(8)) %>% 
+  ungroup()
+
+plot_words_1 %>%
+  ggplot(aes(word, 1, label = word, fill = sentiment )) +
+  geom_point(color = "transparent") +
+  geom_label_repel(force = 1,nudge_y = .5,  
+                   direction = "y",
+                   box.padding = 0.04,
+                   segment.color = "transparent",
+                   size = 3) +
+  facet_grid(~sentiment) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 6),
+        panel.grid = element_blank(), panel.background = element_blank(),
+        panel.border = element_rect("lightgray", fill = NA),
+        strip.text.x = element_text(size = 8)) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("Marvel Universal Characters NRC Sentiments") +
+  coord_flip() 
+
+
+plot_words_2 <- universal_common_words %>%
+  filter(Universe == "DC") %>%
+  select(word)%>%
+  inner_join(get_sentiments('nrc'))%>%
+  group_by(sentiment) %>%
+  count(word, sort = TRUE) %>%
+  arrange(desc(n)) %>%
+  slice(seq_len(8)) %>% 
+  ungroup()
+
+plot_words_2 %>%
+  ggplot(aes(word, 1, label = word, fill = sentiment )) +
+  geom_point(color = "transparent") +
+  geom_label_repel(force = 1,nudge_y = .5,  
+                   direction = "y",
+                   box.padding = 0.04,
+                   segment.color = "transparent",
+                   size = 3) +
+  facet_grid(~sentiment) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 6),
+        panel.grid = element_blank(), panel.background = element_blank(),
+        panel.border = element_rect("lightgray", fill = NA),
+        strip.text.x = element_text(size = 8)) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("DC Universal Characters NRC Sentiments") +
+  coord_flip() 
+```
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r}
+Marvel1 <- Marvel_common_words %>%
+  filter(n >15)
+
+wordcloud::wordcloud(words=Marvel1$word,freq = Marvel_common_words$n,colors=brewer.pal(8, "Set2"))
+```
+```{r}
+wordcloud::wordcloud(words=DC_common_words$word,freq = DC_common_words$n,colors=brewer.pal(8, "Set2"))
+```
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r}
+library(reshape2)
+
+Marvel_char %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray80", "gray20"),
+                   max.words = 100)
+
+```
+```{r}
+DC_char %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray80", "gray20"),
+                   max.words = 100)
+```
+
+## Checking Tragic History
+
+
+# Captain America
+
+```{r}
+cap_america_page <- read_html("https://marvel.fandom.com/wiki/Steven_Rogers_(Earth-616)")
+cap_am_text <- cap_america_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+start_phrase <- "Steve Rogers was born July 4"
+end_phrase <- "country in the world to its citizens"
+
+matches <- regmatches(cap_am_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), cap_am_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+cap_america_life <- regmatches(cap_am_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    cap_am_text, ignore.case = TRUE))
+```
+
+# Batman
+
+```{r}
+# Load the Batman Fandom URL
+batman_page <- read_html("https://dc.fandom.com/wiki/Batman_(Bruce_Wayne)")
+
+# Extract overall text
+b_text <- batman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+start_phrase <- "Bruce Wayne was born to wealthy"
+end_phrase <- "both Thomas and Martha dead"
+
+matches <- regmatches(b_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), b_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+batman_life <- regmatches(b_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    b_text, ignore.case = TRUE))
+```
+
+
+
+```{r}
+cleaning <- function(text_data) {
+  text = text_data$text
+  text_data %>% 
+    mutate(text = tolower(text),
+          text =removeWords(text,stop_words$word),
+          text =str_replace_all(text,"[,'`$+]", ""),
+          text =str_replace_all(text,"[[:punct:]]", " "),
+          text =str_replace_all(text,'[[:digit:]]+', " "),
+          text =str_replace_all(text,"[[:space:]]+", " "), text = trimws(text))
+}
+```
+
+```{r}
+cap_am_earlylife <- tibble(text = cap_america_life) 
+cap_america_life <- cleaning(cap_am_earlylife)
+
+batman_earlylife <- tibble(text = batman_life) 
+batman_life <- cleaning(batman_earlylife)
+```
+
+
+```{r}
+early_life <- bind_rows(batman_life, cap_america_life)
+```
+
+```{r}
+early_life_words <- early_life%>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE)
+
+early_life_words %>%
+  inner_join(get_sentiments("bing")) %>%
+  group_by(sentiment) %>%
+ggplot(aes(word, n, fill = sentiment)) +
+geom_bar(stat = "identity") +
+theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ylab("Contribution to sentiment") + coord_flip() +
+   facet_wrap(~sentiment, scales = "free_y")
+```
+
+## Evidence for the tragic past for the Marvel and DC Universe Heros
