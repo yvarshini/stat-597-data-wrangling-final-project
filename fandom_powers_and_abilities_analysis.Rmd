@@ -1,0 +1,1117 @@
+---
+title: "Marvel vs DC Fandom Pages"
+author: "Jerin"
+date: "2023-04-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Part 3 - Marvel and DC Character Power/Ability Analysis
+
+
+## ANALYSIS OF SOME FAMOUS MARVEL AND DC UNIVERSE CHARACTERS USING FANDOM WED DATA.
+
+This part of the project focuses on gathering the powers and abilities of some characters from both DC and Marvel Comics, analyzing the data to give meaningful insights and implementing the sentiment analysis on the characters.  
+
+The information is collected from the Fandom official site. Using web scraping, the character data i.e 'Powers' and 'Abilities' are extracted from the Marvel Universe and the DC Universe. The characters chosen are:
+
+Marvel Comic Universe:
+1. Captain America
+2. Iron Man
+3. Thor
+4. Spider-Man
+5. The Hulk
+
+DC:
+1. Wonder Woman
+2. Batman
+3. Superman
+4. Aquaman
+5. The Flash
+
+Loading required libraries
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(rvest)
+library(XML)
+library(tidyverse)
+library(RSentiment)
+library(stringr)
+library(ggplot2)
+library(wordcloud)
+library(tidytext)
+library(textdata)
+library(tm)
+library(ggthemes)
+library(corrplot)
+library(reshape2)
+library(igraph)
+```
+
+## Part 'A' - Extracting the information about characters chosen above from the FANDOM website. 
+
+Extracting all Characters from Fandom (MARVEL & DC)
+- For each of the character we get the web address and for scraping the data within the 'Powers' and 'Abilities' section, we give the start phrase and the end phrase to extract the specific powers section. Then we clean the data to extract the adjectives describing the abilities/ powers/weaknesses of the character.
+In this section, regmatches and regexpr are used to extract required text. 
+
+
+(A) DC Characters
+
+1. Wonder Woman
+```{r}
+# Load the Wonder Woman Fandom URL
+wonderwoman_page <- read_html("https://dc.fandom.com/wiki/Wonder_Woman_(Diana_Prince)")
+# Extract overall text
+ww_text <- wonderwoman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Articles.Powers and Abilities"
+end_phrase <- "of Submission: Two magic"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(ww_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), ww_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+ww_pow_ab <- regmatches(ww_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    ww_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+ww_pow_ab <- lapply(ww_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+ww_pow_ab_all <- unlist(ww_pow_ab)
+ww_pow_ab_all
+```
+
+
+```{r}
+# Split text by "\n" into new elements
+ww_pow_ab_split <- lapply(ww_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+ww_pow_ab <- unlist(ww_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+ww_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", ww_pow_ab)
+
+# Remove spaces at the end of elements
+ww_pow_ab <- gsub("\\s+$", "", ww_pow_ab)
+
+```
+
+
+```{r}
+# Remove elements that aren't applicable
+ww_pow_ab[33] <- "Throwing"
+ww_pow_ab <- ww_pow_ab[-c(1,34,35,30)]
+ww_pow_ab
+```
+
+2. Batman
+```{r}
+# Load the Batman Fandom URL
+batman_page <- read_html("https://dc.fandom.com/wiki/Batman_(Bruce_Wayne)")
+
+# Extract overall text
+b_text <- batman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Articles.Powers and"
+end_phrase <- "with immense precision."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(b_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), b_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+b_pow_ab <- regmatches(b_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    b_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+b_pow_ab <- lapply(b_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+b_pow_ab_all <- unlist(b_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+b_pow_ab_split <- lapply(b_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+b_pow_ab <- unlist(b_pow_ab_split)
+```
+
+```{r}
+# Remove text enclosed in square brackets and removing elements which aren't applicable
+b_pow_ab <- gsub("\\[.*?\\]", "", b_pow_ab)
+b_pow_ab[53] <- "Stealth"
+b_pow_ab <- b_pow_ab[-c(1,10,24,36,59,57,58,60,61)]
+b_pow_ab
+```
+
+3. Superman
+```{r}
+# Load the Superman Fandom URL
+superman_page <- read_html("https://dc.fandom.com/wiki/Superman_(Clark_Kent)")
+# Extract overall text
+s_text <- superman_page %>% html_nodes(".page__main") %>% html_text()
+#s_text
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Natasha Irons as a way to properly research and develop new technologies for the benefit of mankind,"
+end_phrase <- "less powerful than an average healthy Kryptonian until"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(s_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), s_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+s_pow_ab <- regmatches(s_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    s_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+s_pow_ab <- lapply(s_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+s_pow_ab_all <- unlist(s_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+s_pow_ab_split <- lapply(s_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+s_pow_ab <- unlist(s_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+s_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", s_pow_ab)
+
+# Remove spaces at the end of elements
+s_pow_ab <- gsub("\\s+$", "", s_pow_ab)
+```
+
+```{r}
+# Remove text enclosed in square brackets and elements that are not applicable
+s_pow_ab <- gsub("\\[.*?\\]", "", s_pow_ab)
+s_pow_ab <- s_pow_ab[-c(1,2,3,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,62,64,66,67,68,69,70)]
+s_pow_ab
+```
+
+4. Aquaman
+```{r}
+# Load the Aquaman Fandom URL
+aquaman_page <- read_html("https://dc.fandom.com/wiki/Aquaman_(Arthur_Curry)")
+# Extract overall text
+a_text <- aquaman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "he would escape and kill"
+end_phrase <- "Poseidon's blessings, Arthur could fly"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(a_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), a_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+a_pow_ab <- regmatches(a_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    a_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+a_pow_ab <- lapply(a_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+a_pow_ab_all <- unlist(a_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+a_pow_ab_split <- lapply(a_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+a_pow_ab <- unlist(a_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+a_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", a_pow_ab)
+
+# Remove spaces at the end of elements
+a_pow_ab <- gsub("\\s+$", "", a_pow_ab)
+
+```
+
+```{r}
+# Remove text enclosed in square brackets and removing elements that are't applicable
+a_pow_ab <- gsub("\\[.*?\\]", "", a_pow_ab)
+a_pow_ab[43] <- "Divine Empowerment"
+a_pow_ab <- a_pow_ab[-c(1,2,17,21,24,26,27,28,29,30,31,32,33,36,40)]
+a_pow_ab
+```
+
+5. Flash
+```{r}
+# Load the Flash Fandom URL
+flash_page <- read_html("https://dc.fandom.com/wiki/Flash_(Barry_Allen)")
+# Extract overall text
+f_text <- flash_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "lash Family as Barry carried Iris'"
+end_phrase <- "Aquaman to a draw in a underwater"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(f_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), f_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+f_pow_ab <- regmatches(f_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    f_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+f_pow_ab <- lapply(f_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+f_pow_ab_all <- unlist(f_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+f_pow_ab_split <- lapply(f_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+f_pow_ab <- unlist(f_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+f_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", f_pow_ab)
+
+# Remove spaces at the end of elements
+f_pow_ab <- gsub("\\s+$", "", f_pow_ab)
+
+```
+
+```{r}
+# Remove text enclosed in square brackets and elements that are not applicable
+f_pow_ab <- gsub("\\[.*?\\]", "", f_pow_ab)
+f_pow_ab <- f_pow_ab[-c(1,2,8,16,17,21,22,23,24,25,29,30,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,50,53,55,57,75)]
+f_pow_ab
+```
+
+(B) Marvel Characters
+
+1. Captain America
+```{r}
+cap_america_page <- read_html("https://marvel.fandom.com/wiki/Steven_Rogers_(Earth-616)")
+cap_am_text <- cap_america_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Captain America's powers, abilities,"
+end_phrase <- "is highly proficient in driving cars,"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(cap_am_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), cap_am_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+cap_pow_ab <- regmatches(cap_am_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    cap_am_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that ends with ":" and the four words before it
+cap_pow_ab <- lapply(cap_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t)(?:\\S+\\s+){0,3}\\S+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+cap_pow_ab <- unlist(cap_pow_ab)
+#cap_pow_ab
+```
+
+```{r}
+# Split text by "\n" into new elements
+cap_split <- lapply(cap_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+cap_pow_ab <- unlist(cap_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+cap_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", cap_pow_ab)
+
+# Remove spaces at the end of elements
+cap_pow_ab <- gsub("\\s+$", "", cap_pow_ab)
+cap_pow_ab
+```
+
+```{r}
+# Remove text enclosed in square brackets and adding missing values
+cap_pow_ab[15] <- "Master Tactician"
+cap_pow_ab[17] <- "Master Strategist"
+cap_pow_ab[18] <- "Master Martial Artist"
+cap_pow_ab[19] <- "Master Acrobat"
+cap_pow_ab[20] <- "Indomitable Will"
+cap_pow_ab[21] <- "Expert Marksman"
+cap_pow_ab[22] <- "Expert Swordsman"
+cap_pow_ab[23] <- "Weapons Proficiency"
+cap_pow_ab[24] <- "Expert Hacker"
+cap_pow_ab[25] <- "Multilingual"
+
+
+cap_pow_ab <- gsub("\\[.*?\\]", "", cap_pow_ab)
+cap_pow_ab <- cap_pow_ab[-c(13,14)]
+cap_pow_ab
+```
+
+2. Iron Man
+```{r}
+iron_man_page <- read_html("https://marvel.fandom.com/wiki/Anthony_Stark_(Earth-616)")
+iron_man_text <- iron_man_page %>% 
+  html_nodes(".page__main") %>% 
+  html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "intelligence of every single person within the"
+end_phrase <- "Urdu wasn't his strong suit"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(iron_man_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), iron_man_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+i_pow_ab <- regmatches(iron_man_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    iron_man_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that ends with ":" and the four words before it
+i_pow_ab <- lapply(i_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t)(?:\\S+\\s+){0,3}\\S+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+i_pow_ab <- unlist(i_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+iron_man_split <- lapply(i_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+i_pow_ab <- unlist(iron_man_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+i_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", i_pow_ab)
+
+# Remove spaces at the end of elements
+i_pow_ab <- gsub("\\s+$", "", i_pow_ab)
+i_pow_ab
+```
+
+```{r}
+# Remove text enclosed in square brackets and adding missing values
+i_pow_ab[5] <- "Master Tactician"
+i_pow_ab[6] <- "Expert Combatant"
+i_pow_ab[7] <- "Skilled Marksman"
+i_pow_ab[8] <- "Multilingual"
+
+i_pow_ab <- gsub("\\[.*?\\]", "", i_pow_ab)
+i_pow_ab <- i_pow_ab[-c(1)]
+i_pow_ab
+```
+
+3. Hulk
+```{r}
+hulk_page <- read_html("https://marvel.fandom.com/wiki/Bruce_Banner_(Earth-616)")
+hulk_text <- hulk_page %>% 
+  html_nodes(".page__main") %>% 
+  html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Bruce reunited with his other alters, he"
+end_phrase <- "learned Russian while getting his"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(hulk_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), hulk_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+h_pow_ab <- regmatches(hulk_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    hulk_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that ends with ":" and the four words before it
+h_pow_ab <- lapply(h_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t)(?:\\S+\\s+){0,3}\\S+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+h_pow_ab <- unlist(h_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+hulk_split <- lapply(h_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+h_pow_ab <- unlist(hulk_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+h_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", h_pow_ab)
+
+# Remove spaces at the end of elements
+h_pow_ab <- gsub("\\s+$", "", h_pow_ab)
+```
+
+```{r}
+# Remove text enclosed in square brackets and adding missing values
+h_pow_ab[19] <- "Gamma Radiation"
+h_pow_ab[20] <- "Master Combatant"
+h_pow_ab[21] <- "Indomitable Will"
+h_pow_ab[22] <- "Self restraint"
+h_pow_ab[23] <- "Multilingual"
+
+h_pow_ab <- gsub("\\[.*?\\]", "", h_pow_ab)
+h_pow_ab <- h_pow_ab[-c(1)]
+h_pow_ab
+```
+
+4. Spiderman
+```{r}
+spiderman_page <- read_html("https://marvel.fandom.com/wiki/Peter_Parker_(Earth-616)")
+spiderman_text <- spiderman_page %>% 
+  html_nodes(".page__main") %>% 
+  html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Spider Physiology: Spider-Man possesses "
+end_phrase <- "(due to his superheroics)"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(spiderman_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), spiderman_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+spi_pow_ab <- regmatches(spiderman_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    spiderman_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n", "\t", or "." and ends with ":"
+ spi_pow_ab <- lapply(spi_pow_ab, function(x) {
+   matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t|\\.)[^:]+(?=:)", x, perl = TRUE))
+   sapply(matches, function(y) {
+     sub("(?i)^\\s+|\\s+$", "", y)
+   })
+ })
+
+# Extract all elements into a single character vector
+spi_pow_ab <- unlist(spi_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+spiderman_split <- lapply(spi_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+spi_pow_ab <- unlist(spiderman_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+spi_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", spi_pow_ab)
+
+# Remove spaces at the end of elements
+spi_pow_ab <- gsub("\\s+$", "", spi_pow_ab)
+#spi_pow_ab
+```
+
+```{r}
+# Remove text enclosed in square brackets and removing elements which arfen't applicable
+spi_pow_ab[4] <- "Superhuman Strength"
+spi_pow_ab[5] <- "Superhuman Speed"
+spi_pow_ab[6] <- "Superhuman Stamina"
+spi_pow_ab[8] <- "Superhuman Durability"
+spi_pow_ab[9] <- "Superhuman Agility"
+spi_pow_ab[10] <- "Regeneration"
+spi_pow_ab[11] <- "Containment Immunity"
+spi_pow_ab[12] <- "Superhuman Equilibrium"
+spi_pow_ab[13] <- "Superhuman Reflexes"
+spi_pow_ab[14] <- "Spider-Sense"
+spi_pow_ab[82] <- "Gifted Intellect"
+spi_pow_ab[83] <- "Expert Inventor"
+spi_pow_ab[84] <- "Skilled Photographer"
+spi_pow_ab[88] <- "Master Martial Artist"
+spi_pow_ab[89] <- "Bilingual"
+
+spi_pow_ab <- gsub("\\[.*?\\]", "", spi_pow_ab)
+spi_pow_ab <- spi_pow_ab[-c(1,2,7,15:55,59,63:80,87,90:96)]
+spi_pow_ab[13] <- "Enhanced Superhuman Powers"
+spi_pow_ab
+```
+
+
+5. Thor
+```{r}
+thor_page <- read_html("https://marvel.fandom.com/wiki/Thor_Odinson_(Earth-616)")
+thor_text <- thor_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Thor's powers, abilities and strength"
+end_phrase <- "Odinforce once a year."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(thor_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), thor_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+t_pow_ab <- regmatches(thor_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    thor_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" or "\t" and ends with ":"
+t_pow_ab <- lapply(t_pow_ab, function(x) {
+  matches <- matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+t_pow_ab <- unlist(t_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+thor_split <- lapply(t_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+t_pow_ab<- unlist(thor_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+t_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", t_pow_ab)
+
+# Remove spaces at the end of elements
+t_pow_ab <- gsub("\\s+$", "", t_pow_ab)
+t_pow_ab
+```
+
+```{r}
+# Remove text enclosed in square brackets and removing elements which are not applicable
+t_pow_ab[1] <- "Godly Strength"
+t_pow_ab[4] <- "Superhuman Agility"
+t_pow_ab[14] <- "Thorsleep"
+t_pow_ab[19] <- "Master Combatant"
+t_pow_ab[22] <- "Cosmic Pyrokinesis"
+t_pow_ab[23] <- "Telepathy Immunity"
+t_pow_ab[24] <- "Diplomatic Immunity"
+t_pow_ab[25] <- "Superhuman Reflexes"
+t_pow_ab <- gsub("\\[.*?\\]", "", t_pow_ab)
+t_pow_ab <- t_pow_ab[-c(15,16,17,18,21)]
+t_pow_ab
+```
+
+Once the Fandom web data is scrapped, the cleaning of the text includes the following steps:
+1. Using the start and end phrase identifying the text within 'Abilities' and extracting the text using regular expression to extract text between phrases
+2. Then Extracting text that starts with "\n" or "\t" and ends with ":" accordingly. It is different for different pages. Extract all elements into a single character vector
+3. Split text by "\n" into new elements and flatten the list into a single character vector.
+4. Remove spaces at the end of elements and perform if any extra cleaning required.
+
+
+## Part 'B' - Converting the extracted Powers and Attributes into a data frame and analysing the data 
+
+
+A data frame is created with character names and their respective powers and abilities.
+
+**1. Frequency Analysis**
+
+The frequency of each power/ability is calculated and a bar chart is created with a color gradient scheme to visualize the frequency. The analysis is intended to provide insights into the most common powers and abilities among the superheroes from the two comic book universes.
+
+```{r}
+# Create a data frame with character names and powers
+powers_df <- data.frame(character = c(rep("Wonder Woman", length(ww_pow_ab)),
+                                      rep("Superman", length(s_pow_ab)),
+                                      rep("Batman", length(b_pow_ab)),
+                                      rep("Flash", length(f_pow_ab)), 
+                                      rep("Aquaman", length(a_pow_ab)), 
+                                      rep("Captain America", length(cap_pow_ab)),
+                                      rep("Iron Man", length(i_pow_ab)),
+                                      rep("Thor", length(t_pow_ab)),
+                                      rep("Spiderman", length(spi_pow_ab)),
+                                      rep("Hulk", length(h_pow_ab))),
+                       powers = c(ww_pow_ab, s_pow_ab, b_pow_ab, f_pow_ab, a_pow_ab, cap_pow_ab, i_pow_ab, t_pow_ab,spi_pow_ab,h_pow_ab), 
+                       stringsAsFactors = FALSE)
+
+# Calculate word frequency
+power_freq <- powers_df %>%
+  count(powers, sort = TRUE)
+
+# Create a color gradient palette
+color_palette <- colorRampPalette(c("#C7E9B4", "#1A9641"))
+
+# Create a bar chart with color gradient scheme
+ggplot(power_freq, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  theme(axis.text.y=element_text(size=3)) +
+  coord_flip() 
+```
+As there are many powers and abilities, we can selectively analyse the data. Thus, the Top 10 Powers and Abilities of all superheros are plotted.
+
+```{r}
+# Filter to top 10 Power/Ability
+top_10_power_freq <- power_freq %>%
+  head(10)
+
+# Create a bar chart with color gradient scheme
+ggplot(top_10_power_freq, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "Top 10 Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  coord_flip()
+```
+The top 10 powers and abilities for superheroes in both universes are:
+Superhuman Strength, Stamina, Speed, Reflexes, Agility, Multilingualism, Leadership, Indomitable Will, Hand to Hand Combat and Flight. This indicates that our universe characters possess unique powers. 
+
+
+For all the 10 characters from both DC and Marvel, The most frequently appeared abilities are
+
+(a) 'Superhuman Stamina', 'Superhuman Speed', 'Superhuman Reflexes', 'Indomitable will' with frequency 6
+(b) 'Leadership', 'Flight', 'Superhuman Strength', 'Superhuman Agility' with a frequency of 5.
+
+The characters of the Marvel and DC universe have many abilities and we can see many of the characters have common strengths such as their speed, flight ability, reflexes leadership. We can find the common powers our universe heroes have.
+
+Now, doing the same for DC characters only
+
+```{r}
+# Create a data frame with character names and powers
+powers_df_dc <- data.frame(character = c(rep("Wonder Woman", length(ww_pow_ab)),
+                                      rep("Superman", length(s_pow_ab)),
+                                      rep("Batman", length(b_pow_ab)),
+                                      rep("Flash", length(f_pow_ab)), 
+                                      rep("Aquaman", length(a_pow_ab))),
+                       powers = c(ww_pow_ab, s_pow_ab, b_pow_ab, f_pow_ab, a_pow_ab), 
+                       stringsAsFactors = FALSE)
+
+# Calculate word frequency
+power_freq_dc <- powers_df_dc %>%
+  count(powers, sort = TRUE)
+
+# Create a color gradient palette
+color_palette <- colorRampPalette(c("#ADD8E6", "#00008B"))
+
+# Create a bar chart with color gradient scheme
+ggplot(power_freq_dc, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "DC Character Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  theme(axis.text.y=element_text(size=3)) +
+  coord_flip() 
+```
+
+```{r}
+# Filter to top 10 Power/Ability
+top_10_power_freq_dc <- power_freq_dc %>%
+  head(10)
+
+# Create a bar chart with color gradient scheme
+ggplot(top_10_power_freq_dc, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "DC Top 10 Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  coord_flip()
+```
+The top power or ability of a DC character is Leadership with a frequency of 5.
+
+Now, doing the same for Marvel characters
+
+```{r}
+# Create a data frame with character names and powers
+powers_df_marvel <- data.frame(character = c(rep("Captain America", length(cap_pow_ab)),
+                                      rep("Iron Man", length(i_pow_ab)),
+                                      rep("Thor", length(t_pow_ab)),
+                                      rep("Spiderman", length(spi_pow_ab)),
+                                      rep("Hulk", length(h_pow_ab))),
+                       powers = c(cap_pow_ab, i_pow_ab, t_pow_ab,spi_pow_ab,h_pow_ab), 
+                       stringsAsFactors = FALSE)
+# Calculate word frequency
+power_freq_marvel <- powers_df_marvel %>%
+  count(powers, sort = TRUE)
+
+# Create a color gradient palette
+color_palette <- colorRampPalette(c("#FFF7A1","#E29F1D"))
+
+# Create a bar chart with color gradient scheme
+ggplot(power_freq_marvel, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "Marvel Character Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  theme(axis.text.y=element_text(size=3)) +
+  coord_flip() 
+```
+```{r}
+# Filter to top 10 Power/Ability
+top_10_power_freq_marvel <- power_freq_marvel %>%
+  head(10)
+
+# Create a bar chart with color gradient scheme
+ggplot(top_10_power_freq_marvel, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "Marvel Top 10 Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  coord_flip()
+```
+The top powers or abilities of a Marvel character are Superhuman Speed, Multilingual, and Indomitable Will with a frequency of 3.
+
+
+**2. Distribution Analysis**
+
+A bar chart is created that shows the frequency of each power/ability among the superheroes.
+
+```{r}
+# Create a vector of 10 color values
+my_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#008080", "#FDBB84","#FF69B4","#000080","#FFFF00")
+
+# Update the scale_fill_manual function with the color values
+ggplot(powers_df, aes(x = powers, fill = character)) +
+  geom_histogram(stat = "count", color = "black", alpha = 0.8) +
+  scale_fill_manual(values = my_colors) +
+  labs(title = "Power/Ability Distribution among Superheroes",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x.bottom  = element_text(angle = 90, vjust = 1, hjust = 1, size = 4)) + 
+  theme(legend.position = "top")
+```
+A stacked bar chart is created that shows the proportion of each power/ability by character.
+
+```{r}
+ggplot(powers_df, aes(x = powers, fill = character)) +
+  geom_bar(position = "fill", color = "black") +
+  labs(title = "Power/Ability Distribution by Character",
+       x = "Power/Ability",
+       y = "Proportion") +
+  theme_minimal() +
+  theme(axis.text.x.bottom  = element_text(angle = 90, vjust = 1, hjust = 1, size = 4)) + 
+  theme(legend.position = "top")
+```
+Considering only DC Characters
+
+```{r}
+# Create a vector of 5 color values
+my_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00")
+
+# Update the scale_fill_manual function with the color values
+ggplot(powers_df_dc, aes(x = powers, fill = character)) +
+  geom_histogram(stat = "count", color = "black", alpha = 0.8) +
+  scale_fill_manual(values = my_colors) +
+  labs(title = "Power/Ability Distribution among DC Superheroes",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x.bottom  = element_text(angle = 90, vjust = 1, hjust = 1, size = 4)) + 
+  theme(legend.position = "top")
+```
+We observe Batman has a lot of unique abilities. Also, we notice that Superman and Wonder Woman have a lot of powers and abilities in common.
+
+Considering only Marvel Characters
+
+```{r}
+# Create a vector of 5 color values
+my_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00")
+
+# Update the scale_fill_manual function with the color values
+ggplot(powers_df_marvel, aes(x = powers, fill = character)) +
+  geom_histogram(stat = "count", color = "black", alpha = 0.8) +
+  scale_fill_manual(values = my_colors) +
+  labs(title = "Power/Ability Distribution among Marvel Superheroes",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x.bottom  = element_text(angle = 90, vjust = 1, hjust = 1, size = 4)) + 
+  theme(legend.position = "top")
+```
+We see that Captain America has many unique powers.
+
+**3. Co-occurrence Analysis**
+
+Performing co-occurrence or correlation of powers and abilities among the superheroes analysis. A heatmap is plotted to visualize the relationships between different powers/abilities, and identifying which powers/abilities tend to occur together
+```{r}
+# Convert powers_df to wide format for co-occurrence analysis
+powers_wide <- dcast(powers_df, character ~ powers, length)
+
+# Compute power/ability co-occurrence matrix
+power_cooccurrence <- crossprod(as.matrix(powers_wide[, -1]))
+
+# Create a heatmap to visualize power/ability co-occurrence
+ggplot() +
+  geom_tile(data = melt(power_cooccurrence), aes(x = Var1, y = Var2, fill = value)) +
+  scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
+  labs(title = "Power/Ability Co-occurrence Analysis",
+       x = "Power/Ability",
+       y = "Power/Ability") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 6),
+        legend.position = "none") +
+  theme(axis.text.y = element_text( vjust = 1, hjust = 1, size = 4),
+        legend.position = "none")
+```
+As there are many powers and abilities, we look at the co-occurrence of top 4 frequently occurring ones.
+
+```{r}
+# Subset the co-occurrence matrix for powers of interest
+powers_of_interest <- c("Superhuman Stamina", "Superhuman Speed", "Superhuman Reflexes", "Indomitable Will")
+power_cooccurrence_subset <- power_cooccurrence[powers_of_interest, powers_of_interest]
+
+# Create a heatmap with highlighted powers of interest
+ggplot() +
+  geom_tile(data = melt(power_cooccurrence_subset), aes(x = Var1, y = Var2, fill = value)) +
+  scale_fill_gradientn(colours = c("#FFB6C1","#FF69B4"), name = "Frequency") +
+  labs(title = "Power/Ability Co-occurrence Analysis",
+       x = "Power/Ability",
+       y = "Power/Ability") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10))
+
+```
+We see that Superhuman Reflexes, Superhuman Speed and Superhuman Stamina tend to appear together when compared to Indomitable Will.
+
+To get a bigger picture, we look at the top 10 frequently occurring powers and abilities.
+```{r}
+# Subset the co-occurrence matrix for powers of interest
+powers_of_interest <- c("Superhuman Stamina", "Superhuman Speed", "Superhuman Reflexes", "Indomitable Will", "Superhuman Strength","Superhuman Agility", "Multilingualism", "Leadership", "Indomitable Will", "Hand-to-Hand Combat","Flight")
+power_cooccurrence_subset <- power_cooccurrence[powers_of_interest, powers_of_interest]
+
+# Create a heatmap with highlighted powers of interest
+ggplot() +
+  geom_tile(data = melt(power_cooccurrence_subset), aes(x = Var1, y = Var2, fill = value)) +
+  geom_text(data = melt(power_cooccurrence_subset), aes(x = Var1, y = Var2, label = value)) +
+  scale_fill_gradientn(colours = c("#FFB6C1","#FF69B4"), name = "Frequency") +
+  labs(title = "Power/Ability Co-occurrence Analysis",
+       x = "Power/Ability",
+       y = "Power/Ability") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10))
+```
+We see that
+
+(a) Flight, Hand-to-Hand Combat and Multilingualism occur the least along with Indomitable Will. Multilingualism and Superhuman Agility also occur together the least among the top 10. 
+(b) The diagonal elements represent the frequency of each power/ability in isolation, i.e., how many times a particular power/ability occurs without any other power/ability being present. But it is seen that they are not equal. This means that some powers/abilities occur more frequently on their own than others.
+
+**4. Network Analysis**
+Plotting the relationships between characters based on their shared powers and abilities,where nodes are created for characters and edges for the shared powers and abilities.
+
+```{r}
+# Create a graph object
+g <- graph.data.frame(powers_df, directed = FALSE)
+
+# Set visual parameters
+vertex.size <- 5
+vertex.label.cex <- 0.5
+vertex.label.dist <- 1.5
+edge.color <- "gray"
+edge.width <- 0.3
+
+# Identify characters to highlight
+characters_to_highlight <- c("Superman", "Wonder Woman", "Flash","Batman","Aquaman","Iron Man", "Captain America","Spiderman","Hulk","Thor") 
+vertex.color <- ifelse(V(g)$name %in% characters_to_highlight, "red", "black") # Set vertex color to red for characters to highlight, black for others
+
+# Plot the network with adjusted visual parameters
+plot(g, vertex.size = vertex.size, vertex.label.cex = vertex.label.cex, 
+     vertex.label.dist = vertex.label.dist, edge.color = edge.color, 
+     edge.width = edge.width, vertex.color = vertex.color, 
+     main = "Character Network based on Shared Powers/Abilities")
+
+```
+The red nodes represent the characters.
+
+We look at the Top 4 frequently occurring powers and abilities
+
+```{r}
+# Filter the powers_df data frame for characters with the specified powers/abilities
+powers_of_interest <- c("Superhuman Stamina", "Superhuman Speed", "Superhuman Reflexes", "Indomitable Will")
+powers_df_filtered <- powers_df[powers_df$powers %in% powers_of_interest, ]
+
+# Create a graph object
+g <- graph.data.frame(powers_df_filtered, directed = FALSE)
+
+# Set visual parameters for the graph
+vertex.size <- 5
+vertex.label.cex <- 0.5
+vertex.label.dist <- 1.5
+edge.color <- "gray"
+edge.width <- 0.3
+
+# Identify characters to highlight
+characters_to_highlight <- c("Superman", "Wonder Woman", "Flash","Batman","Aquaman","Ironman", "Captain America","Spiderman","Hulk","Thor") 
+vertex.color <- ifelse(V(g)$name %in% characters_to_highlight, "red", "black") # Set vertex color to red for characters to highlight, black for others
+
+# Plot the network with adjusted visual parameters
+plot(g, vertex.size = vertex.size, vertex.label.cex = vertex.label.cex, 
+     vertex.label.dist = vertex.label.dist, edge.color = edge.color, 
+     edge.width = edge.width, vertex.color = vertex.color,  
+     main = "Character Network based on Shared Powers/Abilities")
+
+```
+We see that Superman has the most of abilities/powers.
+
+Now, looking at the top 10 most frequently occuring powers/abilities
+```{r}
+# Filter the powers_df data frame for characters with the specified powers/abilities
+powers_of_interest <- c("Superhuman Stamina", "Superhuman Speed", "Superhuman Reflexes", "Indomitable Will", "Superhuman Strength","Superhuman Agility", "Multilingualism", "Leadership", "Indomitable Will", "Hand-to-Hand Combat","Flight")
+powers_df_filtered <- powers_df[powers_df$powers %in% powers_of_interest, ]
+
+# Create a graph object
+g <- graph.data.frame(powers_df_filtered, directed = FALSE)
+
+# Set visual parameters for the graph
+vertex.size <- 5
+vertex.label.cex <- 0.5
+vertex.label.dist <- 1.5
+edge.color <- "gray"
+edge.width <- 0.3
+
+# Identify characters to highlight
+characters_to_highlight <- c("Superman", "Wonder Woman", "Flash","Batman","Aquaman","Ironman", "Captain America","Spiderman","Hulk","Thor") 
+vertex.color <- ifelse(V(g)$name %in% characters_to_highlight, "red", "black") # Set vertex color to red for characters to highlight, black for others
+
+# Plot the network with adjusted visual parameters
+plot(g, vertex.size = vertex.size, vertex.label.cex = vertex.label.cex, 
+     vertex.label.dist = vertex.label.dist, edge.color = edge.color, 
+     edge.width = edge.width, vertex.color = vertex.color,  
+     main = "Character Network based on Shared Powers/Abilities")
+
+```
+Aquaman and Superman seem to have more powers/abilities among the top 10 powers/abilities.
