@@ -1,0 +1,2464 @@
+---
+title: "Marvel vs DC"
+author: "Team 2: Jerin Merlin Xavier (jx282); Manisha Gayatri Damera (md1723); Varshini Yanamandra (vy57); Vivek Reddy Chithari (vc508)"
+date: "2023-04-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1 - IMDB API 
+
+```{r}
+library(tidyverse)
+library(httr)
+library(curl)
+library(jsonlite)
+library(RCurl)
+library(ggplot2)
+library(tidytext)
+library(textdata)
+library(stringr)
+```
+
+ANALYSIS OF A FEW MARVEL AND DC MOVIES USING IMDB DATA
+
+This section gets information from the OMDB API for 5 film series each from the Marvel Comic Universe and the DC universe. The film series chosen are:
+
+Marvel Comic Universe:
+1. Captain America
+2. Iron Man
+3. Thor
+4. Spider-Man
+5. The Hulk
+
+DC:
+1. Wonder Woman
+2. Batman (The Dark Knight Trilogy)
+3. Superman
+4. Aquaman
+5. Shazam!
+
+The data is collected for the movies that have been released, as of date.
+
+```{r}
+# Getting IMDb movie IDs from the IMDb websites. This was done manually.
+# The IDs of films belonging to separate film series are put in separate lists.
+
+# MARVEL
+capt.america <- c("tt0458339", "tt1843866", "tt3498820")
+iron.man <- c("tt0371746", "tt1228705", "tt1300854")
+thor <- c("tt0800369", "tt1981115", "tt3501632", "tt10648342")
+spiderman <- c("tt0145487", "tt0316654", "tt0413300", "tt2250912", "tt6320628", "tt10872600")
+hulk <- c("tt0286716", "tt0800080")
+
+# DC
+wonder.woman <- c("tt0451279", "tt7126948")
+batman.dkt <- c("tt0372784", "tt0468569", "tt1345836") # The Dark Knight Trilogy
+superman <- c("tt0348150", "tt0770828")
+aquaman <- c("tt1477834") #, "tt9663764")
+shazam <- c("tt0448115", "tt10151854")
+```
+
+Once we have the IMDb movie IDs for the movies, we use the OMDB API to extract whatever information is available for each film. An API key was obtained for the OMDB API through their website (www.omdbapi.com). This API key has been used to make requests to the API.
+
+```{r}
+# API key obtained through the website
+mykey = "4ce5d1e6"
+# The base URL to access the API and make requests to it
+baseurl <- "http://www.omdbapi.com"
+
+# joining the movies by comic universe to create 
+# comprehensive lists for all the selected Marvel and DC films
+marvel <- c(capt.america, iron.man, thor, spiderman, hulk)
+dc <- c(wonder.woman, batman.dkt, superman, aquaman, shazam)
+
+# getting API response for all Marvel films
+Marvel <- rep("", length(marvel))
+for (i in 1:length(marvel)) {
+  Marvel[i] <- getForm(uri = baseurl, apikey = mykey, i = marvel[i])
+}
+# getting API response for all DC films
+DC <- rep("", length(dc))
+for (i in 1:length(dc)) {
+  DC[i] <- getForm(uri = baseurl, apikey = mykey, i = dc[i])
+}
+```
+
+```{r}
+# creating summary dataframes
+
+## the response received from the API is in the form of JSON objects
+## we use fromJSON() to parse the JSON objects and convert these responses into named lists
+
+## we start off by creating an empty dataframe with 0 rows and 
+## number of columns equal to the number of keys in the JSON response
+marvel.summary <- data.frame(matrix(ncol = 25, nrow = 0)) # fromJSON() response has 25 attributes
+colnames(marvel.summary) <- Marvel[1] %>% fromJSON() %>% names() # getting the names from the named lists
+
+## populating the Marvel dataframe with information from the API
+for (i in 1:length(Marvel)) {
+  ## this line of code puts the JSON response into the form of a dataframe row
+  marvel.summary.temp <- do.call("cbind", fromJSON(Marvel[i]))
+  ## binding the information on the current movie with all the movies we have so far
+  marvel.summary <- rbind(marvel.summary, marvel.summary.temp)
+}
+
+marvel.summary %>% head() # need to pivot wider
+# pivot wider
+marvel.summary <- pivot_wider(marvel.summary, names_from = Ratings.Source, values_from = Ratings.Value)
+marvel.summary %>% head()
+
+# repeating the same thing to create a summary dataframe for DC movies
+dc.summary <- data.frame(matrix(ncol = 25, nrow = 0))
+colnames(dc.summary) <- DC[1] %>% fromJSON() %>% names()
+
+for (i in 1:length(DC)) {
+  dc.summary.temp <- do.call("cbind", fromJSON(DC[i]))
+  dc.summary <- rbind(dc.summary, dc.summary.temp)
+}
+
+dc.summary %>% head() # need to pivot wider
+dc.summary <- pivot_wider(dc.summary, names_from = Ratings.Source, values_from = Ratings.Value)
+dc.summary %>% head()
+```
+
+This next section deals with processing the data obtained from the API. Data has been cleaned, for example, by removing commas, '$' and '%' signs, and converting character-type columns with numeric values to double-type columns. Details of award nominations and wins have been extracted from the 'Awards' column using Regular Expressions (RegEx).
+
+```{r}
+# DATA PROCESSING
+
+# adding a new column to both the dataframes 
+# to identify which universe a movie belongs to
+marvel.summary$Universe <- rep("Marvel", dim(marvel.summary)[1])
+dc.summary$Universe <- rep("DC", dim(dc.summary)[1])
+
+# combining the two dataframes into one for ease of analysis
+movies <- rbind(marvel.summary, dc.summary)
+
+l = dim(movies)[1] # total number of movies
+# creating lists to hold the values extracted using RegEx
+movies.wins <- rep("", l) # total wins
+movies.noms <- rep("", l) # total nominations
+movies.Owins <- rep("", l) # Oscar wins
+movies.Onoms <- rep("", l) # Oscar nominations
+
+# the award nomination and win information is extracted for each movie using a loop
+# and the values are stored in the corresponding lists
+for (i in 1:l) {
+  movies.wins[i] = str_extract(str_extract(movies$Awards[i], "[0-9]+ win"), "[0-9]+") # extract number of wins
+  movies.noms[i] = str_extract(str_extract(movies$Awards[i], "[0-9]+ nomination"), "[0-9]+") # extract number of nominations
+  movies.Onoms[i] = str_extract(str_extract(movies$Awards[i], "Nominated for [0-9]+ Oscar"), "[0-9]+") # extract number of Oscar nominations
+  movies.Owins[i] = str_extract(str_extract(movies$Awards[i], "Won [0-9]+ Oscar"), "[0-9]+") # extract number of Oscar wins
+}
+
+# adding the values in these lists to the dataframe as new columns
+movies$Wins = movies.wins
+movies$Nominations = movies.noms
+movies$OscarWins = movies.Owins
+movies$OscarNominations = movies.Onoms
+
+# some more processing
+# this processing allows us to convert the character-type columns to numeric-type in the next step
+movies$imdbVotes <- gsub(",", "", movies$imdbVotes) # removing commas in the number of votes column
+movies$BoxOffice <- gsub(",", "", movies$BoxOffice) # removing commas in the box office collections column
+# the '$' sign has been enclosed in square brackets in order to let R identify it as a character
+# and not as the special character it is generally used as
+# this is similar to 'escaping' the special character '$'
+movies$BoxOffice <- gsub("[$]", "", movies$BoxOffice) # removing the '$' sign in the box office collections column
+movies$Runtime <- gsub(" min", "", movies$Runtime) # removing the ' min' suffix after the movie runtime
+movies$`Internet Movie Database` <- gsub("/10", "", movies$`Internet Movie Database`) # removing the denominator for IMD ratings
+# the '%' sign is yet another special character
+# so it has been enclosed in square brackets to escape it
+movies$`Rotten Tomatoes` <- gsub("[%]", "", movies$`Rotten Tomatoes`) # removing the '%' sign in Rotten Tomatoes ratings
+movies$Metacritic <- gsub("/100", "", movies$Metacritic) # removing the denominator for Metacritic ratings
+
+# replacing 'NA' with 0 and converting the columns to numeric types
+movies <- movies %>% mutate_at(c(5, 15:17, 21, 25:27, 29:32), ~replace_na(., "0")) %>% mutate_at(c(5, 15:17, 21, 25:27, 29:32), as.numeric)
+movies %>% head()
+
+# some cells where the numeric field values were "N/A" will be coerced to NA when using as.numeric() - this is ok, since they are null values originally. None of the numeric values are being lost.
+```
+
+After taking a look at the structure of the processed data, it can be seen that not all the columns are necessary for further analysis. There are also some columns that have redundant (repeated) values; for example, the columns 'imdbRating' and 'Internet Movie Database' have the same information. Columns 'Metascore' and 'Metacritic' also contain the same information. Only one out of each set of repeated data columns is kept, and the others are removed.
+
+The final columns chosen are:
+1. Title (column index 1)
+2. Runtime (5)
+3. Plot (10)
+4. imdbRating (16)
+5. imdbVotes (17)
+6. BoxOffice (21)
+7. Rotten Tomatoes (26)
+8. Metacritic (27)
+9. Universe (28)
+10. Wins (29)
+11. Nominations (30)
+12. OscarWins (31)
+13. OscarNominations (32)
+
+```{r}
+# selecting only the columns needed for further analysis
+movies <- movies[, c(1, 5, 10, 16:17, 21, 26:32)]
+head(movies, 3)
+```
+
+Now that we have our data in its final form, we will start visualizing the data in order to draw some inferences from the data.
+
+The first plot is a column plot that we use to compare the runtimes of all of the movies. The columns have been filled based on which universe the film belongs to. The plot has been arranged in the decreasing order of runtime.
+
+```{r}
+# plot 1: comparing the runtimes of all the films
+ggplot(movies, aes(Runtime, reorder(Title, Runtime), # ordering the titles according to their runtimes
+                   fill = Universe)) +
+  geom_col() + # column plot
+  ggtitle("Runtime of Selected Marvel and DC Movies") + # plot title
+  labs(y = "Movie", x = "Runtime (in minutes)") # x and y titles
+```
+
+From this plot, we can see that most DC movies have a longer runtime when compared to Marvel movies, in the 10 movie series we have chosen. We also see that in the DC universe movies, the 'Shazam!' films have the lowest runtimes.
+
+The next few plots help us visualize the ratings of each movie from IMDb, Rotten Tomatoes and Metacritic. These plots, are again, column plots. All these plots have been arranged in the decreasing order of ratings and filled based on which universe the movies belong to.
+
+```{r}
+# plot 2: comparing the IMDb ratings for all the selected movies
+ggplot(movies, aes(imdbRating, reorder(Title, imdbRating), # ordering the titles in order of ratings
+                   fill = Universe)) + # filling the columns based on the universe
+  geom_col() + # column plot
+  labs(y = "Movie", x = "IMDb Rating (out of 10)") + # adding custom axis titles
+  ggtitle("IMDb Ratings") # adding the plot title
+
+# plot 3: comparing the Rotten Tomatoes ratings for all the selected movies
+ggplot(movies, aes(`Rotten Tomatoes`, reorder(Title, `Rotten Tomatoes`), fill = Universe)) +
+  geom_col() + labs(y = "Movie", x = "Rotten Tomatoes Rating (in %)") + ggtitle("Rotten Tomatoes Ratings")
+
+# plot 4: comparing the Metacritic ratings for all the selected movies
+ggplot(movies, aes(Metacritic, reorder(Title, Metacritic), fill = Universe)) +
+  geom_col() + labs(y = "Movie", x = "Metacritic Rating (out of 100)") + ggtitle("Metacritic Score")
+```
+
+Based on these 3 ratings, we can't say that movies of one Universe do better than another. The rankings of the movies varies based on which rating source we use. Interestingly, 'The Dark Knight' is the best rated movie across all three rating sources! We can also see that two movies - Spider-Man: No Way Home and Captain America: Civil War - have no ratings on Rotten Tomatoes.
+
+Let us now take the 6 movies from the Spider-Man film series and perform some analysis.
+The plot generated compares the runtime of each movie with the Metacritic ratings and box office earnings. Each line is colored differently in order to make the graph easy to interpret. The colors have clearly been labelled in the legend. The x-axis labels have been rotated to appear vertically since they will overlap if shown horizontally.
+
+```{r}
+# grepl() allows us to filter titles that have the string "Spider-Man" in them
+spidey <- filter(movies, grepl("Spider-Man", Title)) 
+# take a look at the obtained dataset to confirm if it is correct
+spidey # these are in order of their release dates
+
+# plot 5: comparing the Metacritic ratings, the runtime and the box office collections
+ggplot(spidey) +
+  # adding line and point plots of the Metacritic ratings
+  geom_line(mapping = aes(Title, Metacritic, group = 1, color = "Metacritic Rating (out of 100)")) + # line plot
+  geom_point(mapping = aes(Title, Metacritic, group = 1, color = "Metacritic Rating (out of 100)")) + # plot each point
+  # adding line and point plots of the Runtime
+  geom_line(mapping = aes(Title, Runtime, group = 1, color = "Runtime (in minutes)")) + 
+  geom_point(mapping = aes(Title, Runtime, group = 1, color = "Runtime (in minutes)")) + 
+  # adding line and point plots of the Box Office earning
+  # the earnings have been divided by 10,000,000 in order to bring them on scale with the other two plots
+  geom_line(mapping = aes(Title, BoxOffice/10000000, group = 1, color = "Box Office Collection (in 10^7 dollars)")) + geom_point(mapping = aes(Title, BoxOffice/10000000, group = 1, color = "Box Office Collection (in 10^7 dollars)")) + theme(axis.text.x = element_text(angle = 90)) + # rotating the x-axis labels by 90 degrees
+  ggtitle("Comparing Runtime with Metacritic Ratings and Box Office Collections") + # plot title
+  xlab("Movie") + ylab("Value") # axis titles
+```
+
+Interestingly, we see that the Metacritic ratings generally go down with increasing runtimes and vice-versa. This is not strictly the case, however! Spider-Man 2 is also the highest-rated movie of the series, based on Metacritic ratings. There is no noticeable trend in the box office earnings. 
+It is noted that there is an extreme increase in the earnings of 'Spider-Man: No Way Home' compared to the other films in the series. This could be because it was released just as COVID restrictions were being lifted, which made people more excited than normal to watch the film in theatres after being cooped up at home for around two years.
+
+The next plot compares the award wins and nominations received by each of the six Spider-Man movies. Oscar wins and nominations have also been included. Each line has a different color, and has labelled clearly.
+
+```{r}
+# plot 6: comparing award wins and nominations
+ggplot(spidey) +
+  # plotting total award nominations
+  geom_line(aes(Title, Nominations, group = 1, color = "Nominations")) + # line plot
+  geom_point(aes(Title, Nominations, group = 1, color = "Nominations")) + # plotting every point
+  # plotting total award wins
+  geom_line(aes(Title, Wins, group = 1, color = "Wins")) + # line plot
+  geom_point(aes(Title, Wins, group = 1, color = "Wins")) + # plotting every point
+  # plotting Oscar nominations
+  geom_line(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + # line plot
+  geom_point(aes(Title, OscarNominations, group = 1, color = "Oscar Nominations")) + # plotting every point
+  # plotting Oscar wins
+  geom_line(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + # line plot
+  geom_point(aes(Title, OscarWins, group = 1, color = "Oscar Wins")) + # plotting every point
+  theme(axis.text.x = element_text(angle = 90)) + # rotating the x-axis labels by 90 degrees
+  ggtitle("Award Statistics of Spider-Man Movies") + # plot title
+  xlab("Movie") + ylab("Number") # x and y-axis titles
+```
+
+Spider-Man: Homecoming seems to have done the worst in terms of both wins and nominations for awards, while the next movie, Spider-Man: No Way Home did the best.
+Spider-Man 2 seems to have an Oscar win without an Oscar nomination, which is not possible! On doing an internet search, the film actually received 3 Oscar nominations, making it both the film in the series with the highest Oscar nominations and wins. This is due to the way we extracted the information using Regular Expressions. The description from OMDB only said "Won 1 Oscar."
+
+The next plot is a bar plot that compares the IMDb votes received by each of the selected movies. The movies are ordered in the increasing order of votes received.
+
+```{r}
+# plot 7: comparing IMDb votes received by all selected movies
+ggplot(movies, aes(reorder(Title, imdbVotes), imdbVotes, fill = Universe)) +
+  geom_bar(stat = "identity") + # bar plot
+  theme(axis.text.x = element_text(angle = 90)) + # rotating the x-axis labels by 90 degrees
+  ggtitle("IMDb Votes") + # plot title
+  xlab("Movie") + ylab("IMDb Votes") # axis titles
+```
+
+The top 3 movies based on votes are all DC movies, and are also all Batman movies. The difference between the number of votes for the movies at place 3 (Batman Begins) and place 4 (Iron Man) is huge! The second Batman movie (The Dark Knight) is the most voted film out of all the selected films.
+
+Let us do the same analysis for just the Spider-Man movies, by creating a pie chart to compare the relative number of votes. We will not use the actual numbers. Instead, we will simply rank the movies based on the number of votes they received. The slices of the pie-chart are ordered based on the number of votes received.
+
+```{r}
+# plot 8: IMDb votes received by Spider-Man movies
+ggplot(spidey, aes(x = reorder(Title, imdbVotes), y = imdbVotes, fill = Title)) + # ordering based on votes received
+  geom_bar(stat = "identity") + # start it off as a bar plot
+  coord_polar("x", start = 0) + # convert the plot to a 'polar' plot: pie chart creation
+  theme_void() + # removing the background, grid and axes
+  ggtitle("Pie Chart of IMDb Votes Received by Spider-Man Movies") # title of the plot
+```
+
+Based on the pie chart, we can see that the ranking is (decreasing order of votes received):
+1. Spider-Man
+2. Spider-Man: No Way Home
+3. Spider-Man: Homecoming
+4. Spider-Man 2
+5. Spider-Man 3
+6. Spider-Man: Far from Home
+
+The next section deals with sentiment analysis of the movie plots, as given on IMDb. We start off using the "Bing" lexicon, which simply classifies words into inducing 'positive' and 'negative' sentiments.
+
+```{r}
+# sentiment analysis using the Bing lexicon
+bing <- get_sentiments("bing") # getting the Bing lexicon data
+names(movies)
+
+# columns chosen for sentiment analysis:
+## 1. Title (column 1)
+## 2. Plot (3)
+## 3. Universe (9)
+plots <- movies[, c(1, 3, 9)] # choosing the columns required for sentiment analysis
+# tokenizing each word in the 'Plot' columns and joining the result with the bing lexicon sentiments
+plots <- plots %>% unnest_tokens(word, Plot) %>% inner_join(bing) # join by 'word'
+# counting the number of words for each sentiment, for each universe
+plots <- plots %>% count(Universe, sentiment)
+
+p1 <- plots %>% filter(Universe == "DC") # filtering out only the DC movies
+word_sum_dc = sum(p1$n) # getting the total number of words in DC movies' plots
+p1 <- plots %>% filter(Universe == "Marvel") # filtering out only the Movie movies
+word_sum_marvel = sum(p1$n) # getting the total number of words in Marvel movies' plots
+
+# adding a new column containing the proportion of words in each sentiment for the DC movies
+plots <- plots %>% mutate(prop_sentiment = n/word_sum_dc) 
+# doing the same for Marvel movies
+plots$prop_sentiment[3:4] <- plots$n[3:4]/word_sum_marvel
+
+# plot 9: Bing sentiment plot
+# the bars are in the decreasing order of proportion of sentiment
+ggplot(plots, aes(x = prop_sentiment, y = reorder(sentiment, prop_sentiment), fill = Universe)) +
+  geom_bar(stat = "identity", position = "dodge") + # bar plot
+  ggtitle("Bing Sentiment Analysis for MCU and DC Movie Plots - Collective") + # plot title
+  xlab("Proportion of sentiment") + ylab("Sentiment") # axis titles
+```
+
+We can see that there is a very high proportion of negative sentiments when compared to positive sentiments for both the universes. DC seems to have a higher proportion of positive sentiment in their plots, generally, when compared to Marvel. To get more clarity, let us use the nrc lexicon for a detailed analysis of the sentiments. 
+
+We then look into more detailed sentiments using the 'NRC' lexicon.
+
+```{r}
+nrc <- get_sentiments("nrc") # getting the 'nrc' lexicon information
+
+# repeating the same steps as done with the Bing lexicon
+plots <- movies[, c(1, 3, 9)] # choosing the required columns
+plots <- plots %>% unnest_tokens(word, Plot) %>% inner_join(nrc) # tokenizing by word and joining with the lexicon table
+plots <- plots %>% count(Universe, sentiment) # getting the totals of each sentiment in each Universe
+# removing generic 'positive' and 'negative' sentiments
+plots <- plots %>% filter(sentiment != "positive", sentiment != "negative")
+
+p1 <- plots %>% filter(Universe == "DC")
+word_sum_dc = sum(p1$n)
+p1 <- plots %>% filter(Universe == "Marvel")
+word_sum_marvel = sum(p1$n)
+plots <- plots %>% mutate(prop_sentiment = n/word_sum_dc) # proportion of sentiments for DC movies
+plots$prop_sentiment[9:16] <- plots$n[9:16]/word_sum_marvel # proportion of sentiments for Marvel movies
+
+# plot 10: NRC sentiment plot, ordered in decreasing order of proportion of sentiment
+ggplot(plots, aes(x = prop_sentiment, y = reorder(sentiment, prop_sentiment), fill = Universe)) +
+  geom_bar(stat = "identity", position = "dodge") + # bar plot
+  ggtitle("NRC Sentiment Analysis for MCU and DC Movie Plots - Collective") + # plot title
+  xlab("Proportion of Sentiment") + ylab("Sentiment") # axis titles
+```
+
+Both universes heavily use words that imply fear and anger. Marvel uses more fear-related words compared to DC, while DC uses more anger-related words when compared to Marvel. Marvel has more words that relate to trust, sadness and disgust when compared to DC. DC has a significantly higher proportion of words that relate to joy and surprise, when compared to Marvel.
+
+
+## Part 2 - Comic Books Character Analysis
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(plotly)
+library(cowplot)
+library(grid)
+library(ggplot2)
+library(gridExtra)
+library(plotly)
+```
+
+
+
+```{r}
+# Importing the dataset
+marvel <- read.csv("./data/marvel.csv")
+dc <- read.csv("./data/dc.csv")
+```
+
+
+
+```{r}
+head(marvel)
+head(dc)
+
+print(dim(marvel))
+print(dim(dc))
+
+summary(marvel)
+summary(dc)
+```
+
+```{r}
+# Cleaning the datasets
+colSums(is.na(marvel))
+colSums(is.na(dc))
+
+cols <- c('page_id', 'urlslug', 'GSM', 'Year')
+marvel <- marvel %>% select(-cols)
+
+cols <- c('page_id', 'urlslug', 'GSM', 'YEAR')
+dc <- dc %>% select(-cols)
+
+head(marvel)
+head(dc)
+```
+
+```{r}
+marvel <- marvel %>% drop_na(FIRST.APPEARANCE)
+dc <- dc %>% drop_na(FIRST.APPEARANCE)
+
+marvel <- marvel %>% separate(FIRST.APPEARANCE, c("MONTH", "YEAR"), "-")
+dc <- dc %>% separate(FIRST.APPEARANCE, c("YEAR", "MONTH"), ", ")
+
+marvel$YEAR <- ifelse(as.integer(marvel$YEAR) > 21, paste0('19', marvel$YEAR), paste0('20', marvel$YEAR))
+
+head(marvel)
+
+marvel$MONTH <- recode(marvel$MONTH,
+                       'Jan' = "January",
+                       'Feb' = "February",
+                       'Mar' = "March",
+                       'Apr' = "April",
+                       'Jun' = "June",
+                       'Jul' = "July",
+                       'Aug' = "August",
+                       'Sep' = "September",
+                       'Oct' = "October",
+                       'Nov' = "November",
+                       'Dec' = "December")
+
+
+head(marvel)
+head(dc)
+```
+
+
+This code snippet is part of a project that analyzes the introduction of characters over time in Marvel and DC comics.
+
+The first two lines convert the "YEAR" column from characters to numeric values in both the Marvel and DC data frames.
+
+The next four lines sort the Marvel and DC data frames by year, with missing values placed last.
+
+Finally, the code prints the year of the first character introduced in Marvel and DC comics using the cat function. The output will be a message that shows the year of the first character introduced in Marvel and DC comics respectively.
+```{r}
+# 1. Introduction of characters over time
+
+# Convert years from characters to numeric values
+marvel$YEAR <- as.numeric(marvel$YEAR)
+dc$YEAR <- as.numeric(dc$YEAR)
+
+# Sort MARVEL characters by year
+marvel_sorted <- marvel[order(marvel$YEAR, na.last = NA),]
+
+# Print the first character of MARVEL
+cat("The first character of MARVEL appeared in the year ", marvel_sorted$YEAR[1], "\n")
+
+# Sort DC characters by year
+dc_sorted <- dc[order(dc$YEAR, na.last = NA),]
+
+# Print the first character of DC
+cat("The first character of DC appeared in the year ", dc_sorted$YEAR[1], "\n")
+```
+
+This code snippet creates a density plot that shows the distribution of appearance of heroes in comic books over time for both Marvel and DC.
+
+The first two lines define a ggplot object and specify the data frame and aesthetics for the plot. Two geom_density layers are added to the plot to create the density curves for Marvel and DC data. The fill parameter inside the aes function specifies the fill color of each density curve.
+
+The alpha parameter controls the transparency of the density curves, with a value of 0.5 indicating that the curves are semi-transparent. The color parameter sets the color of the outline of each density curve.
+
+The labs function call adds a title to the plot. The theme_minimal function call changes the theme of the plot to a minimalist style.
+
+Finally, the scale_fill_manual function call sets the fill color of the density curves to red for Marvel and blue for DC.
+```{r, fig.show='hold', fig.align='center'}
+ggplot() +
+  geom_density(aes(x = as.numeric(marvel$YEAR), fill = "Marvel"), alpha = 0.5, color = "red") +
+  geom_density(aes(x = as.numeric(dc$YEAR), fill = "DC"), alpha = 0.5, color = "blue") +
+  labs(title = "Distribution of Appearance of heroes in comic in years") +
+  theme_minimal() +
+  scale_fill_manual(values = c("red", "blue"))
+```
+
+This code snippet creates a grid of two density plots for each gender category (female and male) that show the ratio of characters created over time for both Marvel and DC comics.
+
+The first eight lines of code filter the Marvel and DC data frames by gender category (female, male, genderfluid, agender, and transgender), creating four new data frames for each gender category for each publisher.
+
+The gender_density_plot function takes three parameters: data, which specifies the data frame to use for the plot; var, which specifies the variable to use for the x-axis; label, which specifies the title of the plot; and color, which specifies the fill color of the density curve. This function creates a density plot for the specified gender category.
+
+The options function call sets the size of the plot. The plot_grid function creates a grid of two plots for each gender category, one for Marvel and one for DC, using the gender_density_plot function. The geom_density layer is added to each plot to create the density curve for the corresponding data frame. The ncol and nrow parameters set the number of columns and rows for the grid layout.
+
+```{r}
+marvel_female_characters <- marvel %>% filter(SEX == 'Female Characters')
+dc_female_characters <- dc %>% filter(SEX == 'Female Characters')
+
+marvel_male_characters <- marvel %>% filter(SEX == 'Male Characters')
+dc_male_characters <- dc %>% filter(SEX == 'Male Characters')
+
+marvel_gf_characters <- marvel %>% filter(SEX == 'Genderfluid Characters')
+dc_gf_characters <- dc %>% filter(SEX == 'Genderless Characters')
+
+marvel_ag_characters <- marvel %>% filter(SEX == 'Agender Characters')
+dc_tg_characters <- dc %>% filter(SEX == 'Transgender Characters')
+
+
+gender_density_plot <- function(data, var, label, color) {
+  ggplot(data = data, aes_string(x = var)) + 
+    geom_density(fill = color, alpha = 0.5) + 
+    labs(title = label, x = "Year") +
+    theme_minimal() +
+    theme(plot.title = element_text(size = rel(0.8))) # Decrease the font size of the title
+}
+
+options(repr.plot.width = 30, repr.plot.height = 8) # Increase the plot size
+
+plot_grid(
+  gender_density_plot(marvel_female_characters, 'YEAR', 'Ratio of Female characters created over the years - Marvel', 'red') +
+    geom_density(data = dc_female_characters, aes(x = as.numeric(YEAR)), fill = "blue", alpha = 0.5),
+  gender_density_plot(marvel_male_characters, 'YEAR', 'Ratio of Male characters created over the years - Marvel', 'red') +
+    geom_density(data = dc_male_characters, aes(x = as.numeric(YEAR)), fill = "blue", alpha = 0.5),
+  ncol = 2,
+  nrow = 1
+)
+```
+
+
+This code snippet continues the analysis of the introduction of characters over time for Marvel and DC comics by creating four density plots for each gender category (female, male, agender/genderless, and genderfluid/transgender) that show the ratio of characters created over time for both publishers.
+
+The first twelve lines of code add a new column called "Publisher" to each of the filtered data frames for each gender category, and assign the corresponding publisher to each data frame.
+
+The gender_density_plot function now takes two data frame parameters, data1 and data2, for the two publishers being compared. The rbind function is used to combine the two data frames into a single data frame for plotting.
+
+The scale_fill_manual function call sets the fill colors of the density curves for each publisher to red for Marvel and blue for DC. The name parameter sets the title of the legend to "Publisher", and the labels parameter sets the label names for each fill color.
+
+The options function call sets the size of the plot. Four calls to the gender_density_plot function are made to create four density plots for each gender category, one for each publisher being compared. The output will be a grid of four plots that show the ratio of characters created over time for each gender category, comparing Marvel and DC.
+
+```{r, fig.show='hold', fig.align='center'}
+# Add a Publisher column to each data frame
+marvel_female_characters$Publisher <- "Marvel"
+dc_female_characters$Publisher <- "DC"
+marvel_male_characters$Publisher <- "Marvel"
+dc_male_characters$Publisher <- "DC"
+marvel_ag_characters$Publisher <- "Marvel"
+dc_gf_characters$Publisher <- "DC"
+marvel_gf_characters$Publisher <- "Marvel"
+dc_tg_characters$Publisher <- "DC"
+
+gender_density_plot <- function(data1, data2, var, label, color1, color2) {
+  combined_data <- rbind(data1, data2)
+  ggplot(data = combined_data, aes_string(x = var, fill = "Publisher")) + 
+    geom_density(alpha = 0.5) +
+    labs(title = label, x = "Year") +
+    scale_fill_manual(values = c(Marvel = color1, DC = color2),
+                      name = "Publisher",
+                      labels = c("Marvel", "DC")) +
+    theme_minimal() +
+    theme(plot.title = element_text(size = rel(0.8)))
+}
+
+options(repr.plot.width = 12, repr.plot.height = 8)
+
+# Plot for Female Characters
+female_plot <- gender_density_plot(marvel_female_characters, dc_female_characters, 'YEAR', 'Ratio of Female characters created over the years', 'red', 'blue')
+print(female_plot)
+
+# Plot for Male Characters
+male_plot <- gender_density_plot(marvel_male_characters, dc_male_characters, 'YEAR', 'Ratio of Male characters created over the years', 'red', 'blue')
+print(male_plot)
+
+# Plot for Agender/Genderless Characters
+ag_plot <- gender_density_plot(marvel_ag_characters, dc_gf_characters, 'YEAR', 'Ratio of Agender/Genderless characters created over the years', 'red', 'blue')
+print(ag_plot)
+
+# Plot for Genderfluid/Transgender Characters
+gf_plot <- gender_density_plot(marvel_gf_characters, dc_tg_characters, 'YEAR', 'Ratio of Genderfluid/Transgender characters created over the years', 'red', 'blue')
+print(gf_plot)
+```
+
+
+```{r}
+# When was the first female character introduced?
+min(dc_female_characters$YEAR, na.rm = TRUE)
+min(marvel_female_characters$YEAR, na.rm = TRUE)
+min(marvel_gf_characters$YEAR, na.rm = TRUE)
+min(dc_gf_characters$YEAR, na.rm = TRUE)
+min(marvel_ag_characters$YEAR, na.rm = TRUE)
+min(dc_tg_characters$YEAR, na.rm = TRUE)
+```
+
+This code snippet creates two bar plots that show the number of first appearances of characters in Marvel and DC comics by year.
+
+The first four lines of code use the %>% pipe operator to filter out missing values from the "YEAR" column in the Marvel data frame using the na.omit function, and count the number of characters that appeared in each year using the count function. This creates a new data frame that can be plotted.
+
+The ggplot function is used to create a new plot object, and aes is used to specify the aesthetics for the plot. The geom_bar function is used to create a bar plot where the height of each bar represents the number of characters that appeared in each year.
+
+The labs function call adds a title to the plot. The theme_minimal function call changes the theme of the plot to a minimalist style. The theme function is used to adjust the x-axis text angle to 90 degrees, making it easier to read the year labels.
+
+The next four lines of code follow a similar pattern as the first four lines, but for the DC data frame instead. The output will be two separate bar plots that show the number of first appearances of characters in Marvel and DC comics by year.
+
+```{r, fig.show='hold', fig.align='center'}
+# First Appearances by Year
+marvel %>% na.omit() %>% count(YEAR) %>%
+  ggplot(aes(x = as.factor(YEAR), y = n)) +
+  geom_bar(stat = "identity", fill = "red") +
+  labs(title = "Marvel First Appearances by Year") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+dc %>% na.omit() %>% count(YEAR) %>%
+  ggplot(aes(x = as.factor(YEAR), y = n)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "DC First Appearances by Year") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+```
+
+
+This code snippet analyzes the gender diversity of characters in Marvel and DC comics by creating two pie charts.
+
+The first two lines of code use the %>% pipe operator to count the number of characters for each gender category in the Marvel and DC data frames, and filter out empty values using the filter function. This creates two new data frames that can be plotted.
+
+The plot_ly function from the plotly package is used to create a new plot object. The labels parameter is used to specify the labels for the slices of the pie chart, and the values parameter is used to specify the values for each slice. The type parameter is set to "pie" to create a pie chart, and the name parameter sets the name of the plot.
+
+The layout function call adds a title to the plot. The fig object is printed to display the pie chart. The code creates two pie charts, one for Marvel and one for DC, that show the gender diversity of characters.
+
+```{r, fig.show='hold', fig.align='center'}
+# 2. Gender proportionality
+sex_m <- marvel %>% count(SEX) %>% filter(SEX != "")
+sex_dc <- dc %>% count(SEX) %>% filter(SEX != "")
+
+fig <- plot_ly(sex_m, labels = ~SEX, values = ~n, type = "pie", name = "Marvel") %>%
+  layout(title = "Gender diversity in Marvel")
+
+fig
+
+fig <- plot_ly(sex_dc, labels = ~SEX, values = ~n, type = "pie", name = "DC") %>%
+  layout(title = "Gender diversity in DC")
+
+fig
+```
+
+This code snippet creates six bar plots that show the count of characters in each gender category (Male Characters, Female Characters, Genderfluid Characters, Agender Characters, and Transgender Characters) for different attributes (Alignment, Identity, and Living Status) in Marvel and DC comics.
+
+The first two lines of code remove rows with empty values in the "SEX" column of the Marvel and DC data frames using the filter function.
+
+The plot_count function is defined to create a bar plot that shows the count of characters for each gender category in a given data frame and attribute. The function takes six arguments: data (the data frame to plot), x_var (the attribute to plot on the x-axis), hue_var (the variable to group by and fill the bars with), title (the title of the plot), palette (the color palette to use for the bars), and scale_x_discrete (a function that is used to customize the x-axis labels).
+
+The ggplot function is used to create a new plot object, and aes_string is used to specify the aesthetics for the plot. The geom_bar function is used to create a bar plot where the height of each bar represents the count of characters for each gender category. The labs function call adds a title and axis labels to the plot. The theme function is used to adjust the appearance of the plot. The scale_fill_manual function is used to customize the colors of the bars.
+
+The last six lines of code call the plot_count function with different arguments to create six separate bar plots that show the count of characters in each gender category for different attributes in Marvel and DC comics. The print function is used to display the plots.
+
+```{r, fig.show='hold', fig.align='center'}
+# Remove rows with empty values in the SEX column of marvel data frame
+marvel <- marvel %>% filter(SEX != "")
+
+# Remove rows with empty values in the SEX column of dc data frame
+dc <- dc %>% filter(SEX != "")
+
+plot_count <- function(data, x_var, hue_var, title, palette) {
+  ggplot(data = data, aes_string(x = x_var, fill = hue_var)) + 
+    geom_bar(position = "dodge") + 
+    labs(title = title, x = x_var, y = "Count") +
+    theme_bw() +
+    theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      axis.title = element_text(size = 12, face = "bold"),
+      axis.text = element_text(size = 10),
+      legend.title = element_text(size = 12, face = "bold"),
+      legend.text = element_text(size = 10),
+      panel.grid.major = element_line(color = "grey", linetype = "dashed"),
+      panel.grid.minor = element_blank(),
+      panel.border = element_blank(),
+      panel.background = element_blank()
+    ) +
+    scale_fill_manual(values = palette)+
+    scale_x_discrete(labels = c("Good", "Bad", "Neutral", "Unknown"))
+}
+
+# Marvel Sex vs Align
+plot1 <- plot_count(marvel, "ALIGN", "SEX", "Marvel Sex vs Align", c("red", "blue", "green", "orange", "purple"))
+print(plot1)
+
+# DC Sex vs Align
+plot2 <- plot_count(dc, "ALIGN", "SEX", "DC Sex vs Align", c("red", "blue", "green", "orange", "purple"))
+print(plot2)
+
+# Marvel Sex vs Identity
+plot3 <- plot_count(marvel, "ID", "SEX", "Marvel Sex vs Identity", c("red", "blue", "green", "orange", "purple"))
+print(plot3)
+
+# DC Sex vs Identity
+plot4 <- plot_count(dc, "ID", "SEX", "DC Sex vs Identity", c("red", "blue", "green", "orange", "purple"))
+print(plot4)
+
+# Marvel Sex vs Living status
+plot5 <- plot_count(marvel, "ALIVE", "SEX", "Marvel Sex vs Living status", c("red", "blue", "green", "orange", "purple"))
+print(plot5)
+
+# DC Sex vs Living status
+plot6 <- plot_count(dc, "ALIVE", "SEX", "DC Sex vs Living status", c("red", "blue", "green", "orange", "purple"))
+print(plot6)
+```
+
+
+This code defines a function called top_10_pie_plotly that creates pie charts using the plotly library. It takes as inputs a data frame (df), a column containing the labels for the pie chart (labels), a column containing the values for the pie chart (values), and a title for the chart (title).
+
+The function is then used to create three pie charts: one for the top 10 Marvel characters by appearances, one for the top 10 DC characters by appearances, and one for the top 10 characters overall (combining both Marvel and DC). The code selects the top 10 characters for each data frame using arrange and head functions.
+
+```{r, fig.show='hold', fig.align='center'}
+# Function for creating pie charts with plotly
+top_10_pie_plotly <- function(df, labels, values, title) {
+  pie_chart <- plot_ly(df, labels = labels, values = values, type = "pie") %>%
+    layout(title = title)
+  pie_chart
+}
+
+# Top 10 appearances in Marvel
+top_10_appearances_m <- marvel %>% arrange(desc(APPEARANCES)) %>% head(10)
+top_10_pie_plotly(top_10_appearances_m, top_10_appearances_m$name, top_10_appearances_m$APPEARANCES, "Top 10 Marvel Characters by Appearances")
+
+# Top 10 appearances in DC
+top_10_appearances_dc <- dc %>% arrange(desc(APPEARANCES)) %>% head(10)
+top_10_pie_plotly(top_10_appearances_dc, top_10_appearances_dc$name, top_10_appearances_dc$APPEARANCES, "Top 10 DC Characters by Appearances")
+
+# Combining Marvel and DC data
+dc_marvel <- rbind(dc, marvel)
+
+# Top 10 appearances in combined dataset
+top_10_appearances_dc_marvel <- dc_marvel %>% arrange(desc(APPEARANCES)) %>% head(10)
+top_10_pie_plotly(top_10_appearances_dc_marvel, top_10_appearances_dc_marvel$name, top_10_appearances_dc_marvel$APPEARANCES, "Top 10 DC and Marvel Characters by Appearances")
+```
+
+Part 3 - Marvel and DC Character Sentiment Analysis
+
+
+## ANALYSIS OF SOME FAMOUS MARVEL AND DC UNIVERSE CHARACTERS USING FANDOM WED DATA.
+
+This part of the project focuses on gathering the powers and abilities of some characters from both DC and Marvel Comics, analyzing the data to give meaningful insights and implementing the sentiment analysis on the characters.  
+
+The information is collected from the Fandom official site. Using web scraping, the character data i.e 'Powers' and 'Abilities' are extracted from the Marvel Universe and the DC Universe. The characters chosen are:
+
+Marvel Comic Universe:
+1. Captain America
+2. Iron Man
+3. Thor
+4. Spider-Man
+5. The Hulk
+
+DC:
+1. Wonder Woman
+2. Batman
+3. Superman
+4. Aquaman
+5. The Flash
+
+Loading required libraries
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(rvest)
+library(XML)
+library(tidyverse)
+library(RSentiment)
+library(stringr)
+library(ggplot2)
+library(wordcloud)
+library(tidytext)
+library(textdata)
+library(tm)
+library(ggthemes)
+library(corrplot)
+library(reshape2)
+library(igraph)
+```
+
+## Part 'A' - Extracting the information about characters chosen above from the FANDOM website. 
+
+Extracting all Characters from Fandom (MARVEL & DC)
+- For each of the character we get the web address and for scraping the data within the 'Powers' and 'Abilities' section, we give the start phrase and the end phrase to extract the specific powers section. Then we clean the data to extract the adjectives describing the abilities/ powers/weaknesses of the character.
+In this section, regmatches and regexpr are used to extract required text. 
+
+
+(A) DC Characters
+
+1. Wonder Woman
+```{r}
+# Load the Wonder Woman Fandom URL
+wonderwoman_page <- read_html("https://dc.fandom.com/wiki/Wonder_Woman_(Diana_Prince)")
+# Extract overall text
+ww_text <- wonderwoman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Articles.Powers and Abilities"
+end_phrase <- "of Submission: Two magic"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(ww_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), ww_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+ww_pow_ab <- regmatches(ww_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    ww_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+ww_pow_ab <- lapply(ww_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+ww_pow_ab_all <- unlist(ww_pow_ab)
+ww_pow_ab_all
+```
+
+
+```{r}
+# Split text by "\n" into new elements
+ww_pow_ab_split <- lapply(ww_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+ww_pow_ab <- unlist(ww_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+ww_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", ww_pow_ab)
+
+# Remove spaces at the end of elements
+ww_pow_ab <- gsub("\\s+$", "", ww_pow_ab)
+
+```
+
+
+```{r}
+# Remove elements that aren't applicable
+ww_pow_ab[33] <- "Throwing"
+ww_pow_ab <- ww_pow_ab[-c(1,34,35,30)]
+ww_pow_ab
+```
+
+2. Batman
+```{r}
+# Load the Batman Fandom URL
+batman_page <- read_html("https://dc.fandom.com/wiki/Batman_(Bruce_Wayne)")
+
+# Extract overall text
+b_text <- batman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Articles.Powers and"
+end_phrase <- "with immense precision."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(b_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), b_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+b_pow_ab <- regmatches(b_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    b_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+b_pow_ab <- lapply(b_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+b_pow_ab_all <- unlist(b_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+b_pow_ab_split <- lapply(b_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+b_pow_ab <- unlist(b_pow_ab_split)
+```
+
+```{r}
+# Remove text enclosed in square brackets and removing elements which aren't applicable
+b_pow_ab <- gsub("\\[.*?\\]", "", b_pow_ab)
+b_pow_ab[53] <- "Stealth"
+b_pow_ab <- b_pow_ab[-c(1,10,24,36,59,57,58,60,61)]
+b_pow_ab
+```
+
+3. Superman
+```{r}
+# Load the Superman Fandom URL
+superman_page <- read_html("https://dc.fandom.com/wiki/Superman_(Clark_Kent)")
+# Extract overall text
+s_text <- superman_page %>% html_nodes(".page__main") %>% html_text()
+#s_text
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Natasha Irons as a way to properly research and develop new technologies for the benefit of mankind,"
+end_phrase <- "less powerful than an average healthy Kryptonian until"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(s_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), s_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+s_pow_ab <- regmatches(s_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    s_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+s_pow_ab <- lapply(s_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+s_pow_ab_all <- unlist(s_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+s_pow_ab_split <- lapply(s_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+s_pow_ab <- unlist(s_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+s_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", s_pow_ab)
+
+# Remove spaces at the end of elements
+s_pow_ab <- gsub("\\s+$", "", s_pow_ab)
+```
+
+```{r}
+# Remove text enclosed in square brackets and elements that are not applicable
+s_pow_ab <- gsub("\\[.*?\\]", "", s_pow_ab)
+s_pow_ab <- s_pow_ab[-c(1,2,3,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,62,64,66,67,68,69,70)]
+s_pow_ab
+```
+
+4. Aquaman
+```{r}
+# Load the Aquaman Fandom URL
+aquaman_page <- read_html("https://dc.fandom.com/wiki/Aquaman_(Arthur_Curry)")
+# Extract overall text
+a_text <- aquaman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "he would escape and kill"
+end_phrase <- "Poseidon's blessings, Arthur could fly"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(a_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), a_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+a_pow_ab <- regmatches(a_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    a_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+a_pow_ab <- lapply(a_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+a_pow_ab_all <- unlist(a_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+a_pow_ab_split <- lapply(a_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+a_pow_ab <- unlist(a_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+a_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", a_pow_ab)
+
+# Remove spaces at the end of elements
+a_pow_ab <- gsub("\\s+$", "", a_pow_ab)
+
+```
+
+```{r}
+# Remove text enclosed in square brackets and removing elements that are't applicable
+a_pow_ab <- gsub("\\[.*?\\]", "", a_pow_ab)
+a_pow_ab[43] <- "Divine Empowerment"
+a_pow_ab <- a_pow_ab[-c(1,2,17,21,24,26,27,28,29,30,31,32,33,36,40)]
+a_pow_ab
+```
+
+5. Flash
+```{r}
+# Load the Flash Fandom URL
+flash_page <- read_html("https://dc.fandom.com/wiki/Flash_(Barry_Allen)")
+# Extract overall text
+f_text <- flash_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "lash Family as Barry carried Iris'"
+end_phrase <- "Aquaman to a draw in a underwater"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(f_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), f_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+f_pow_ab <- regmatches(f_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    f_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" and ends with ":"
+f_pow_ab <- lapply(f_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+f_pow_ab_all <- unlist(f_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+f_pow_ab_split <- lapply(f_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+f_pow_ab <- unlist(f_pow_ab_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+f_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", f_pow_ab)
+
+# Remove spaces at the end of elements
+f_pow_ab <- gsub("\\s+$", "", f_pow_ab)
+
+```
+
+```{r}
+# Remove text enclosed in square brackets and elements that are not applicable
+f_pow_ab <- gsub("\\[.*?\\]", "", f_pow_ab)
+f_pow_ab <- f_pow_ab[-c(1,2,8,16,17,21,22,23,24,25,29,30,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,50,53,55,57,75)]
+f_pow_ab
+```
+
+(B) Marvel Characters
+
+1. Captain America
+```{r}
+cap_america_page <- read_html("https://marvel.fandom.com/wiki/Steven_Rogers_(Earth-616)")
+cap_am_text <- cap_america_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Captain America's powers, abilities,"
+end_phrase <- "is highly proficient in driving cars,"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(cap_am_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), cap_am_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+cap_pow_ab <- regmatches(cap_am_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    cap_am_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that ends with ":" and the four words before it
+cap_pow_ab <- lapply(cap_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t)(?:\\S+\\s+){0,3}\\S+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+cap_pow_ab <- unlist(cap_pow_ab)
+#cap_pow_ab
+```
+
+```{r}
+# Split text by "\n" into new elements
+cap_split <- lapply(cap_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+cap_pow_ab <- unlist(cap_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+cap_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", cap_pow_ab)
+
+# Remove spaces at the end of elements
+cap_pow_ab <- gsub("\\s+$", "", cap_pow_ab)
+cap_pow_ab
+```
+
+```{r}
+# Remove text enclosed in square brackets and adding missing values
+cap_pow_ab[15] <- "Master Tactician"
+cap_pow_ab[17] <- "Master Strategist"
+cap_pow_ab[18] <- "Master Martial Artist"
+cap_pow_ab[19] <- "Master Acrobat"
+cap_pow_ab[20] <- "Indomitable Will"
+cap_pow_ab[21] <- "Expert Marksman"
+cap_pow_ab[22] <- "Expert Swordsman"
+cap_pow_ab[23] <- "Weapons Proficiency"
+cap_pow_ab[24] <- "Expert Hacker"
+cap_pow_ab[25] <- "Multilingual"
+
+
+cap_pow_ab <- gsub("\\[.*?\\]", "", cap_pow_ab)
+cap_pow_ab <- cap_pow_ab[-c(13,14)]
+cap_pow_ab
+```
+
+2. Iron Man
+```{r}
+iron_man_page <- read_html("https://marvel.fandom.com/wiki/Anthony_Stark_(Earth-616)")
+iron_man_text <- iron_man_page %>% 
+  html_nodes(".page__main") %>% 
+  html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "intelligence of every single person within the"
+end_phrase <- "Urdu wasn't his strong suit"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(iron_man_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), iron_man_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+i_pow_ab <- regmatches(iron_man_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    iron_man_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that ends with ":" and the four words before it
+i_pow_ab <- lapply(i_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t)(?:\\S+\\s+){0,3}\\S+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+i_pow_ab <- unlist(i_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+iron_man_split <- lapply(i_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+i_pow_ab <- unlist(iron_man_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+i_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", i_pow_ab)
+
+# Remove spaces at the end of elements
+i_pow_ab <- gsub("\\s+$", "", i_pow_ab)
+i_pow_ab
+```
+
+```{r}
+# Remove text enclosed in square brackets and adding missing values
+i_pow_ab[5] <- "Master Tactician"
+i_pow_ab[6] <- "Expert Combatant"
+i_pow_ab[7] <- "Skilled Marksman"
+i_pow_ab[8] <- "Multilingual"
+
+i_pow_ab <- gsub("\\[.*?\\]", "", i_pow_ab)
+i_pow_ab <- i_pow_ab[-c(1)]
+i_pow_ab
+```
+
+3. Hulk
+```{r}
+hulk_page <- read_html("https://marvel.fandom.com/wiki/Bruce_Banner_(Earth-616)")
+hulk_text <- hulk_page %>% 
+  html_nodes(".page__main") %>% 
+  html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Bruce reunited with his other alters, he"
+end_phrase <- "learned Russian while getting his"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(hulk_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), hulk_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+h_pow_ab <- regmatches(hulk_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    hulk_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that ends with ":" and the four words before it
+h_pow_ab <- lapply(h_pow_ab, function(x) {
+  matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t)(?:\\S+\\s+){0,3}\\S+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+h_pow_ab <- unlist(h_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+hulk_split <- lapply(h_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+h_pow_ab <- unlist(hulk_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+h_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", h_pow_ab)
+
+# Remove spaces at the end of elements
+h_pow_ab <- gsub("\\s+$", "", h_pow_ab)
+```
+
+```{r}
+# Remove text enclosed in square brackets and adding missing values
+h_pow_ab[19] <- "Gamma Radiation"
+h_pow_ab[20] <- "Master Combatant"
+h_pow_ab[21] <- "Indomitable Will"
+h_pow_ab[22] <- "Self restraint"
+h_pow_ab[23] <- "Multilingual"
+
+h_pow_ab <- gsub("\\[.*?\\]", "", h_pow_ab)
+h_pow_ab <- h_pow_ab[-c(1)]
+h_pow_ab
+```
+
+4. Spiderman
+```{r}
+spiderman_page <- read_html("https://marvel.fandom.com/wiki/Peter_Parker_(Earth-616)")
+spiderman_text <- spiderman_page %>% 
+  html_nodes(".page__main") %>% 
+  html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Spider Physiology: Spider-Man possesses "
+end_phrase <- "(due to his superheroics)"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(spiderman_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), spiderman_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+spi_pow_ab <- regmatches(spiderman_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    spiderman_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n", "\t", or "." and ends with ":"
+ spi_pow_ab <- lapply(spi_pow_ab, function(x) {
+   matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t|\\.)[^:]+(?=:)", x, perl = TRUE))
+   sapply(matches, function(y) {
+     sub("(?i)^\\s+|\\s+$", "", y)
+   })
+ })
+
+# Extract all elements into a single character vector
+spi_pow_ab <- unlist(spi_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+spiderman_split <- lapply(spi_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+spi_pow_ab <- unlist(spiderman_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+spi_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", spi_pow_ab)
+
+# Remove spaces at the end of elements
+spi_pow_ab <- gsub("\\s+$", "", spi_pow_ab)
+#spi_pow_ab
+```
+
+```{r}
+# Remove text enclosed in square brackets and removing elements which arfen't applicable
+spi_pow_ab[4] <- "Superhuman Strength"
+spi_pow_ab[5] <- "Superhuman Speed"
+spi_pow_ab[6] <- "Superhuman Stamina"
+spi_pow_ab[8] <- "Superhuman Durability"
+spi_pow_ab[9] <- "Superhuman Agility"
+spi_pow_ab[10] <- "Regeneration"
+spi_pow_ab[11] <- "Containment Immunity"
+spi_pow_ab[12] <- "Superhuman Equilibrium"
+spi_pow_ab[13] <- "Superhuman Reflexes"
+spi_pow_ab[14] <- "Spider-Sense"
+spi_pow_ab[82] <- "Gifted Intellect"
+spi_pow_ab[83] <- "Expert Inventor"
+spi_pow_ab[84] <- "Skilled Photographer"
+spi_pow_ab[88] <- "Master Martial Artist"
+spi_pow_ab[89] <- "Bilingual"
+
+spi_pow_ab <- gsub("\\[.*?\\]", "", spi_pow_ab)
+spi_pow_ab <- spi_pow_ab[-c(1,2,7,15:55,59,63:80,87,90:96)]
+spi_pow_ab[13] <- "Enhanced Superhuman Powers"
+spi_pow_ab
+```
+
+
+5. Thor
+```{r}
+thor_page <- read_html("https://marvel.fandom.com/wiki/Thor_Odinson_(Earth-616)")
+thor_text <- thor_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Thor's powers, abilities and strength"
+end_phrase <- "Odinforce once a year."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(thor_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), thor_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+t_pow_ab <- regmatches(thor_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    thor_text, ignore.case = TRUE))
+```
+
+```{r}
+# Extract text that starts with "\n" or "\t" and ends with ":"
+t_pow_ab <- lapply(t_pow_ab, function(x) {
+  matches <- matches <- regmatches(x, gregexpr("(?i)(?<=\\n|\\t)[^:]+(?=:)", x, perl = TRUE))
+  sapply(matches, function(y) {
+    sub("(?i)^\\s+|\\s+$", "", y)
+  })
+})
+
+# Extract all elements into a single character vector
+t_pow_ab <- unlist(t_pow_ab)
+```
+
+```{r}
+# Split text by "\n" into new elements
+thor_split <- lapply(t_pow_ab, function(x) {
+  unlist(strsplit(x, "\n"))
+})
+
+# Flatten the list into a single character vector
+t_pow_ab<- unlist(thor_split)
+
+# Remove "(Formerly)" and "(Advanced)"
+t_pow_ab <- gsub("(?i)\\(Formerly\\)|\\(Advanced\\)", "", t_pow_ab)
+
+# Remove spaces at the end of elements
+t_pow_ab <- gsub("\\s+$", "", t_pow_ab)
+t_pow_ab
+```
+
+```{r}
+# Remove text enclosed in square brackets and removing elements which are not applicable
+t_pow_ab[1] <- "Godly Strength"
+t_pow_ab[4] <- "Superhuman Agility"
+t_pow_ab[14] <- "Thorsleep"
+t_pow_ab[19] <- "Master Combatant"
+t_pow_ab[22] <- "Cosmic Pyrokinesis"
+t_pow_ab[23] <- "Telepathy Immunity"
+t_pow_ab[24] <- "Diplomatic Immunity"
+t_pow_ab[25] <- "Superhuman Reflexes"
+t_pow_ab <- gsub("\\[.*?\\]", "", t_pow_ab)
+t_pow_ab <- t_pow_ab[-c(15,16,17,18,21)]
+t_pow_ab
+```
+
+Once the Fandom web data is scrapped, the cleaning of the text includes the following steps:
+1. Using the start and end phrase identifying the text within 'Abilities' and extracting the text using regular expression to extract text between phrases
+2. Then Extracting text that starts with "\n" or "\t" and ends with ":" accordingly. It is different for different pages. Extract all elements into a single character vector
+3. Split text by "\n" into new elements and flatten the list into a single character vector.
+4. Remove spaces at the end of elements and perform if any extra cleaning required.
+
+
+## Part 'B' - Converting the extracted Powers and Attributes into a data frame and analysing the data 
+
+
+A data frame is created with character names and their respective powers and abilities.
+
+**1. Frequency Analysis**
+
+The frequency of each power/ability is calculated and a bar chart is created with a color gradient scheme to visualize the frequency. The analysis is intended to provide insights into the most common powers and abilities among the superheroes from the two comic book universes.
+
+```{r}
+# Create a data frame with character names and powers
+powers_df <- data.frame(character = c(rep("Wonder Woman", length(ww_pow_ab)),
+                                      rep("Superman", length(s_pow_ab)),
+                                      rep("Batman", length(b_pow_ab)),
+                                      rep("Flash", length(f_pow_ab)), 
+                                      rep("Aquaman", length(a_pow_ab)), 
+                                      rep("Captain America", length(cap_pow_ab)),
+                                      rep("Iron Man", length(i_pow_ab)),
+                                      rep("Thor", length(t_pow_ab)),
+                                      rep("Spiderman", length(spi_pow_ab)),
+                                      rep("Hulk", length(h_pow_ab))),
+                       powers = c(ww_pow_ab, s_pow_ab, b_pow_ab, f_pow_ab, a_pow_ab, cap_pow_ab, i_pow_ab, t_pow_ab,spi_pow_ab,h_pow_ab), 
+                       stringsAsFactors = FALSE)
+
+# Calculate word frequency
+power_freq <- powers_df %>%
+  count(powers, sort = TRUE)
+
+# Create a color gradient palette
+color_palette <- colorRampPalette(c("#C7E9B4", "#1A9641"))
+
+# Create a bar chart with color gradient scheme
+ggplot(power_freq, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  theme(axis.text.y=element_text(size=3)) +
+  coord_flip() 
+```
+As there are many powers and abilities, we can selectively analyse the data. Thus, the Top 10 Powers and Abilities of all superheros are plotted.
+
+```{r}
+# Filter to top 10 Power/Ability
+top_10_power_freq <- power_freq %>%
+  head(10)
+
+# Create a bar chart with color gradient scheme
+ggplot(top_10_power_freq, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "Top 10 Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  coord_flip()
+```
+The top 10 powers and abilities for superheroes in both universes are:
+Superhuman Strength, Stamina, Speed, Reflexes, Agility, Multilingualism, Leadership, Indomitable Will, Hand to Hand Combat and Flight. This indicates that our universe characters possess unique powers. 
+
+
+For all the 10 characters from both DC and Marvel, The most frequently appeared abilities are
+
+(a) 'Superhuman Stamina', 'Superhuman Speed', 'Superhuman Reflexes', 'Indomitable will' with frequency 6
+(b) 'Leadership', 'Flight', 'Superhuman Strength', 'Superhuman Agility' with a frequency of 5.
+
+The characters of the Marvel and DC universe have many abilities and we can see many of the characters have common strengths such as their speed, flight ability, reflexes leadership. We can find the common powers our universe heroes have.
+
+Now, doing the same for DC characters only
+
+```{r}
+# Create a data frame with character names and powers
+powers_df_dc <- data.frame(character = c(rep("Wonder Woman", length(ww_pow_ab)),
+                                      rep("Superman", length(s_pow_ab)),
+                                      rep("Batman", length(b_pow_ab)),
+                                      rep("Flash", length(f_pow_ab)), 
+                                      rep("Aquaman", length(a_pow_ab))),
+                       powers = c(ww_pow_ab, s_pow_ab, b_pow_ab, f_pow_ab, a_pow_ab), 
+                       stringsAsFactors = FALSE)
+
+# Calculate word frequency
+power_freq_dc <- powers_df_dc %>%
+  count(powers, sort = TRUE)
+
+# Create a color gradient palette
+color_palette <- colorRampPalette(c("#ADD8E6", "#00008B"))
+
+# Create a bar chart with color gradient scheme
+ggplot(power_freq_dc, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "DC Character Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  theme(axis.text.y=element_text(size=3)) +
+  coord_flip() 
+```
+
+```{r}
+# Filter to top 10 Power/Ability
+top_10_power_freq_dc <- power_freq_dc %>%
+  head(10)
+
+# Create a bar chart with color gradient scheme
+ggplot(top_10_power_freq_dc, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "DC Top 10 Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  coord_flip()
+```
+The top power or ability of a DC character is Leadership with a frequency of 5.
+
+Now, doing the same for Marvel characters
+
+```{r}
+# Create a data frame with character names and powers
+powers_df_marvel <- data.frame(character = c(rep("Captain America", length(cap_pow_ab)),
+                                      rep("Iron Man", length(i_pow_ab)),
+                                      rep("Thor", length(t_pow_ab)),
+                                      rep("Spiderman", length(spi_pow_ab)),
+                                      rep("Hulk", length(h_pow_ab))),
+                       powers = c(cap_pow_ab, i_pow_ab, t_pow_ab,spi_pow_ab,h_pow_ab), 
+                       stringsAsFactors = FALSE)
+# Calculate word frequency
+power_freq_marvel <- powers_df_marvel %>%
+  count(powers, sort = TRUE)
+
+# Create a color gradient palette
+color_palette <- colorRampPalette(c("#FFF7A1","#E29F1D"))
+
+# Create a bar chart with color gradient scheme
+ggplot(power_freq_marvel, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "Marvel Character Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  theme(axis.text.y=element_text(size=3)) +
+  coord_flip() 
+```
+```{r}
+# Filter to top 10 Power/Ability
+top_10_power_freq_marvel <- power_freq_marvel %>%
+  head(10)
+
+# Create a bar chart with color gradient scheme
+ggplot(top_10_power_freq_marvel, aes(x = powers, y = n, fill = n)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = color_palette(1), high = color_palette(10)) +
+  labs(title = "Marvel Top 10 Power Frequency Analysis",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  coord_flip()
+```
+The top powers or abilities of a Marvel character are Superhuman Speed, Multilingual, and Indomitable Will with a frequency of 3.
+
+
+**2. Distribution Analysis**
+
+A bar chart is created that shows the frequency of each power/ability among the superheroes.
+
+```{r}
+# Create a vector of 10 color values
+my_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#008080", "#FDBB84","#FF69B4","#000080","#FFFF00")
+
+# Update the scale_fill_manual function with the color values
+ggplot(powers_df, aes(x = powers, fill = character)) +
+  geom_histogram(stat = "count", color = "black", alpha = 0.8) +
+  scale_fill_manual(values = my_colors) +
+  labs(title = "Power/Ability Distribution among Superheroes",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x.bottom  = element_text(angle = 90, vjust = 1, hjust = 1, size = 4)) + 
+  theme(legend.position = "top")
+```
+A stacked bar chart is created that shows the proportion of each power/ability by character.
+
+```{r}
+ggplot(powers_df, aes(x = powers, fill = character)) +
+  geom_bar(position = "fill", color = "black") +
+  labs(title = "Power/Ability Distribution by Character",
+       x = "Power/Ability",
+       y = "Proportion") +
+  theme_minimal() +
+  theme(axis.text.x.bottom  = element_text(angle = 90, vjust = 1, hjust = 1, size = 4)) + 
+  theme(legend.position = "top")
+```
+Considering only DC Characters
+
+```{r}
+# Create a vector of 5 color values
+my_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00")
+
+# Update the scale_fill_manual function with the color values
+ggplot(powers_df_dc, aes(x = powers, fill = character)) +
+  geom_histogram(stat = "count", color = "black", alpha = 0.8) +
+  scale_fill_manual(values = my_colors) +
+  labs(title = "Power/Ability Distribution among DC Superheroes",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x.bottom  = element_text(angle = 90, vjust = 1, hjust = 1, size = 4)) + 
+  theme(legend.position = "top")
+```
+We observe Batman has a lot of unique abilities. Also, we notice that Superman and Wonder Woman have a lot of powers and abilities in common.
+
+Considering only Marvel Characters
+
+```{r}
+# Create a vector of 5 color values
+my_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00")
+
+# Update the scale_fill_manual function with the color values
+ggplot(powers_df_marvel, aes(x = powers, fill = character)) +
+  geom_histogram(stat = "count", color = "black", alpha = 0.8) +
+  scale_fill_manual(values = my_colors) +
+  labs(title = "Power/Ability Distribution among Marvel Superheroes",
+       x = "Power/Ability",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x.bottom  = element_text(angle = 90, vjust = 1, hjust = 1, size = 4)) + 
+  theme(legend.position = "top")
+```
+We see that Captain America has many unique powers.
+
+**3. Co-occurrence Analysis**
+
+Performing co-occurrence or correlation of powers and abilities among the superheroes analysis. A heatmap is plotted to visualize the relationships between different powers/abilities, and identifying which powers/abilities tend to occur together
+```{r}
+# Convert powers_df to wide format for co-occurrence analysis
+powers_wide <- dcast(powers_df, character ~ powers, length)
+
+# Compute power/ability co-occurrence matrix
+power_cooccurrence <- crossprod(as.matrix(powers_wide[, -1]))
+
+# Create a heatmap to visualize power/ability co-occurrence
+ggplot() +
+  geom_tile(data = melt(power_cooccurrence), aes(x = Var1, y = Var2, fill = value)) +
+  scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
+  labs(title = "Power/Ability Co-occurrence Analysis",
+       x = "Power/Ability",
+       y = "Power/Ability") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 6),
+        legend.position = "none") +
+  theme(axis.text.y = element_text( vjust = 1, hjust = 1, size = 4),
+        legend.position = "none")
+```
+As there are many powers and abilities, we look at the co-occurrence of top 4 frequently occurring ones.
+
+```{r}
+# Subset the co-occurrence matrix for powers of interest
+powers_of_interest <- c("Superhuman Stamina", "Superhuman Speed", "Superhuman Reflexes", "Indomitable Will")
+power_cooccurrence_subset <- power_cooccurrence[powers_of_interest, powers_of_interest]
+
+# Create a heatmap with highlighted powers of interest
+ggplot() +
+  geom_tile(data = melt(power_cooccurrence_subset), aes(x = Var1, y = Var2, fill = value)) +
+  scale_fill_gradientn(colours = c("#FFB6C1","#FF69B4"), name = "Frequency") +
+  labs(title = "Power/Ability Co-occurrence Analysis",
+       x = "Power/Ability",
+       y = "Power/Ability") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10))
+
+```
+We see that Superhuman Reflexes, Superhuman Speed and Superhuman Stamina tend to appear together when compared to Indomitable Will.
+
+To get a bigger picture, we look at the top 10 frequently occurring powers and abilities.
+```{r}
+# Subset the co-occurrence matrix for powers of interest
+powers_of_interest <- c("Superhuman Stamina", "Superhuman Speed", "Superhuman Reflexes", "Indomitable Will", "Superhuman Strength","Superhuman Agility", "Multilingualism", "Leadership", "Indomitable Will", "Hand-to-Hand Combat","Flight")
+power_cooccurrence_subset <- power_cooccurrence[powers_of_interest, powers_of_interest]
+
+# Create a heatmap with highlighted powers of interest
+ggplot() +
+  geom_tile(data = melt(power_cooccurrence_subset), aes(x = Var1, y = Var2, fill = value)) +
+  geom_text(data = melt(power_cooccurrence_subset), aes(x = Var1, y = Var2, label = value)) +
+  scale_fill_gradientn(colours = c("#FFB6C1","#FF69B4"), name = "Frequency") +
+  labs(title = "Power/Ability Co-occurrence Analysis",
+       x = "Power/Ability",
+       y = "Power/Ability") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10))
+```
+We see that
+
+(a) Flight, Hand-to-Hand Combat and Multilingualism occur the least along with Indomitable Will. Multilingualism and Superhuman Agility also occur together the least among the top 10. 
+(b) The diagonal elements represent the frequency of each power/ability in isolation, i.e., how many times a particular power/ability occurs without any other power/ability being present. But it is seen that they are not equal. This means that some powers/abilities occur more frequently on their own than others.
+
+**4. Network Analysis**
+Plotting the relationships between characters based on their shared powers and abilities,where nodes are created for characters and edges for the shared powers and abilities.
+
+```{r}
+# Create a graph object
+g <- graph.data.frame(powers_df, directed = FALSE)
+
+# Set visual parameters
+vertex.size <- 5
+vertex.label.cex <- 0.5
+vertex.label.dist <- 1.5
+edge.color <- "gray"
+edge.width <- 0.3
+
+# Identify characters to highlight
+characters_to_highlight <- c("Superman", "Wonder Woman", "Flash","Batman","Aquaman","Iron Man", "Captain America","Spiderman","Hulk","Thor") 
+vertex.color <- ifelse(V(g)$name %in% characters_to_highlight, "red", "black") # Set vertex color to red for characters to highlight, black for others
+
+# Plot the network with adjusted visual parameters
+plot(g, vertex.size = vertex.size, vertex.label.cex = vertex.label.cex, 
+     vertex.label.dist = vertex.label.dist, edge.color = edge.color, 
+     edge.width = edge.width, vertex.color = vertex.color, 
+     main = "Character Network based on Shared Powers/Abilities")
+
+```
+The red nodes represent the characters.
+
+We look at the Top 4 frequently occurring powers and abilities
+
+```{r}
+# Filter the powers_df data frame for characters with the specified powers/abilities
+powers_of_interest <- c("Superhuman Stamina", "Superhuman Speed", "Superhuman Reflexes", "Indomitable Will")
+powers_df_filtered <- powers_df[powers_df$powers %in% powers_of_interest, ]
+
+# Create a graph object
+g <- graph.data.frame(powers_df_filtered, directed = FALSE)
+
+# Set visual parameters for the graph
+vertex.size <- 5
+vertex.label.cex <- 0.5
+vertex.label.dist <- 1.5
+edge.color <- "gray"
+edge.width <- 0.3
+
+# Identify characters to highlight
+characters_to_highlight <- c("Superman", "Wonder Woman", "Flash","Batman","Aquaman","Ironman", "Captain America","Spiderman","Hulk","Thor") 
+vertex.color <- ifelse(V(g)$name %in% characters_to_highlight, "red", "black") # Set vertex color to red for characters to highlight, black for others
+
+# Plot the network with adjusted visual parameters
+plot(g, vertex.size = vertex.size, vertex.label.cex = vertex.label.cex, 
+     vertex.label.dist = vertex.label.dist, edge.color = edge.color, 
+     edge.width = edge.width, vertex.color = vertex.color,  
+     main = "Character Network based on Shared Powers/Abilities")
+
+```
+We see that Superman has the most of abilities/powers.
+
+Now, looking at the top 10 most frequently occuring powers/abilities
+```{r}
+# Filter the powers_df data frame for characters with the specified powers/abilities
+powers_of_interest <- c("Superhuman Stamina", "Superhuman Speed", "Superhuman Reflexes", "Indomitable Will", "Superhuman Strength","Superhuman Agility", "Multilingualism", "Leadership", "Indomitable Will", "Hand-to-Hand Combat","Flight")
+powers_df_filtered <- powers_df[powers_df$powers %in% powers_of_interest, ]
+
+# Create a graph object
+g <- graph.data.frame(powers_df_filtered, directed = FALSE)
+
+# Set visual parameters for the graph
+vertex.size <- 5
+vertex.label.cex <- 0.5
+vertex.label.dist <- 1.5
+edge.color <- "gray"
+edge.width <- 0.3
+
+# Identify characters to highlight
+characters_to_highlight <- c("Superman", "Wonder Woman", "Flash","Batman","Aquaman","Ironman", "Captain America","Spiderman","Hulk","Thor") 
+vertex.color <- ifelse(V(g)$name %in% characters_to_highlight, "red", "black") # Set vertex color to red for characters to highlight, black for others
+
+# Plot the network with adjusted visual parameters
+plot(g, vertex.size = vertex.size, vertex.label.cex = vertex.label.cex, 
+     vertex.label.dist = vertex.label.dist, edge.color = edge.color, 
+     edge.width = edge.width, vertex.color = vertex.color,  
+     main = "Character Network based on Shared Powers/Abilities")
+
+```
+Aquaman and Superman seem to have more powers/abilities among the top 10 powers/abilities.
+
+## Part 'C' - Cleaning and Tidying the extracted text. Converting the text dataframe into tibble. 
+
+The text extracted is cleaned by removing stop words, numbers, punctuation etc. A function is written to implement this tidying.
+
+```{r}
+cleaning <- function(text_data) {
+  text = text_data$text
+  text_data %>% 
+    mutate(text = tolower(text),
+          text =removeWords(text,stop_words$word),
+          text =str_replace_all(text,"[,'`$+]", ""),
+          text =str_replace_all(text,"[[:punct:]]", " "),
+          text =str_replace_all(text,'[[:digit:]]+', " "),
+          text =str_replace_all(text,"[[:space:]]+", " "), text = trimws(text))
+}
+```
+
+```{r}
+
+cap_am_tb <- tibble(text = cap_pow_ab) 
+iron_man_tb <- tibble(text = i_pow_ab) 
+hulk_tb <- tibble(text = h_pow_ab) 
+spiderman_tb <- tibble(text = spi_pow_ab) 
+thor_tb <- tibble(text = t_pow_ab) 
+
+
+cap_am_clean <- cleaning(cap_am_tb) 
+hulk_clean <- cleaning(hulk_tb) 
+spiderman_clean <- cleaning(spiderman_tb) 
+thor_clean <- cleaning(thor_tb) 
+iron_clean <- cleaning(iron_man_tb) 
+```
+
+```{r}
+wonder_women_tb <- tibble(text = ww_pow_ab) 
+batman_tb <- tibble(text = b_pow_ab) 
+superman_tb <- tibble(text = s_pow_ab) 
+aquaman_tb <- tibble(text = a_pow_ab) 
+flash_tb <- tibble(text = f_pow_ab) 
+
+
+wonder_women_clean <- cleaning(wonder_women_tb) 
+batman_clean <- cleaning(batman_tb) 
+superman_clean <- cleaning(superman_tb) 
+aquaman_clean <- cleaning(aquaman_tb) 
+flash_clean <- cleaning(flash_tb) 
+```
+
+## Part 'D' - Tokenization of the text and mutating the 'Character' and 'Universe' field for converting into dataframes. And cleaning the words excluding name words, and other common words.
+
+
+
+
+```{r}
+
+cap_am_mar <- cap_am_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Captian_America")
+
+iron_man_mar <- iron_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Iron_Man")
+
+hulk_mar <- hulk_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Hulk")
+
+spider_man_mar <- spiderman_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Spider_Man")
+
+thor_mar <- thor_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Thor")
+```
+```{r}
+wonder_women_dc <- wonder_women_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Wonder-Women")
+
+batman_dc <- batman_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Batman")
+
+superman_dc <- superman_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Superman")
+
+aquaman_dc <- aquaman_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Aquaman")
+
+flash_dc <- flash_clean %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Character = "Flash")
+```
+
+```{r}
+Marvel_char <- bind_rows(cap_am_mar, iron_man_mar, spider_man_mar, hulk_mar, thor_mar) %>%
+  mutate(Universe = "Marvel")
+
+Marvel_words <- bind_rows(cap_am_clean, iron_clean, hulk_clean, thor_clean, spiderman_clean)
+```
+
+```{r}
+DC_char <- bind_rows(wonder_women_dc, batman_dc, superman_dc, aquaman_dc, flash_dc) %>%
+  mutate(Universe = "DC")
+
+DC_words <- bind_rows(wonder_women_clean, batman_clean, superman_clean, aquaman_clean, flash_clean)
+```
+
+```{r}
+head(Marvel_words)
+```
+```{r}
+universal_char <- bind_rows(Marvel_char, DC_char)
+universal_words <- bind_rows(Marvel_words, DC_words)
+```
+
+
+
+'universal_char' - includes characters abilities with which character has that ability, and the universe added. (has both Marvel and DC characters)
+
+```{r}
+exem1 <- c('hulk', 'spiderman', 'thor', 'iron', 'captain', 'spider', 'vol', 'ability', 'peter','factor', 'stark', 'tony', 'avengers')
+
+
+Marvel_common_words <- Marvel_words %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Universe = "Marvel") %>%
+  filter(!word %in% exem1)
+
+head(Marvel_common_words)
+
+DC_common_words <- DC_words %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE) %>%
+  mutate(Universe = "DC") %>%
+  filter(!word %in% exem1)
+
+head(DC_common_words)
+
+universal_common_words <- bind_rows(Marvel_common_words, DC_common_words)
+```
+We identify the common words in both the universes and combine them into a tibbel which has the word and the frequency with additional field 'Universe'.
+
+## Part 'E' - SENTIMENT ANALYSIS OF POWERS/WEAKNESSES OF MARVEL AND DC CHARACTERS.
+
+```{r}
+nrc_words <- get_sentiments("nrc")
+afinn_words <- get_sentiments("afinn")
+bing_words <- get_sentiments("bing")
+
+affin_negative<-get_sentiments("afinn") %>% filter(value<0)
+affin_positive<-get_sentiments("afinn") %>% filter(value>0)
+bing_positive<-get_sentiments("bing") %>% filter(sentiment=="positive")
+bing_negative<-get_sentiments("bing") %>% filter(sentiment=="negative")
+
+```
+
+For the sentiment analysis different sentiments from the word list such as 'nrc', 'bing' and 'afinn' are considered. Here we categorize the positive and negative sentiments in the above catgories using filter and add it into new list.
+
+
+```{r}
+universal_char %>%
+  inner_join(affin_positive) %>%
+  select(Character, Universe, value) %>%
+  group_by(Character, Universe) %>%
+  ggplot(aes(Character, value, color = Character)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of DC and Marvel afinn sentiments score") +
+  xlab("Character") +
+  ylab("afinn value") +
+  theme_minimal() +
+  facet_wrap(~Universe, ncol = 1) +
+  theme(axis.text.x=element_text(size=7))
+  
+```
+The universal_char dataframe is joined with the afinn_postive sentiments (ranging  > 0) and see the distribution using boxplot. The boxplot represents the minimum, maximum, median, first quartile and third quartile in the data set. It is also useful in comparing the distribution of data across data sets by drawing boxplots for each of them. Similarly, here the boxplot is initiated for each of the Marvel and DC universe characters we have chosen and  we observe how the range varies for each of the afinn value.
+Observation: The boxplot shows the mean of the afinn values for both the universal characters. In the Marvel Universe, Iron Man, Captain America and Thor has the maximum afinn value reaching value of 3 but the mean of the value for the Marvel characters i.e Captain America, Hulk, SpiderMan is the same i.e 2.0. Iron man and Thor showing more postive and high powers. Among the DC characters,the mean afinn value is same. Unanticipatedly, elevated powers shown in the Marvel World compared to DC. 
+
+
+
+```{r}
+
+universal_common_words %>%
+  select(word, n, Universe) %>%
+  inner_join(get_sentiments('nrc')) %>%
+  filter(!sentiment %in% c('sadness')) %>%
+  filter(!sentiment %in% c('disgust')) %>%
+  group_by(Universe, sentiment)%>%
+    count()%>%
+      ggplot(aes(x=reorder(sentiment,X = n),y=n,color=sentiment))+geom_col()+guides(fill=F)+
+        coord_flip()+
+        theme_wsj()+xlab("")+ylab("NRC Sentiments")+ggtitle("NRC Sentiments")+ theme(plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(~Universe, ncol = 2) +
+  theme(axis.text.y=element_text(size=10)) 
+```
+Using the nrc sentiment we compare how the emotions vary in both the worlds. The emotion associated with words showing positive, trust, surprise and joy emotions are frequent among the Marvel characters. While the emotions such as trust, negative, anger, anticipation are more recurrent in DC characters. 
+It is unusual to see such a pattern in the sentiments but such a comparison is captivating. It is possible to relate this to the comedic tone in Marvel and the serious tone in DC. Marvel is known for incorporating humor and lightheartedness in their stories and characters, while DC tends to have a more serious and dark tone.
+
+```{r}
+library(ggrepel) 
+
+plot_words_1 <- universal_common_words %>%
+  filter(Universe == "Marvel") %>%
+  select(word)%>%
+  inner_join(get_sentiments('nrc'))%>%
+  group_by(sentiment) %>%
+  count(word, sort = TRUE) %>%
+  arrange(desc(n)) %>%
+  slice(seq_len(8)) %>% 
+  ungroup()
+
+plot_words_1 %>%
+  ggplot(aes(word, 1, label = word, fill = sentiment )) +
+  geom_point(color = "transparent") +
+  geom_label_repel(force = 1,nudge_y = .5,  
+                   direction = "y",
+                   box.padding = 0.04,
+                   segment.color = "transparent",
+                   size = 3) +
+  facet_grid(~sentiment) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 6),
+        panel.grid = element_blank(), panel.background = element_blank(),
+        panel.border = element_rect("lightgray", fill = NA),
+        strip.text.x = element_text(size = 8)) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("Marvel Universal Characters NRC Sentiments") +
+  coord_flip() 
+
+
+plot_words_2 <- universal_common_words %>%
+  filter(Universe == "DC") %>%
+  select(word)%>%
+  inner_join(get_sentiments('nrc'))%>%
+  group_by(sentiment) %>%
+  count(word, sort = TRUE) %>%
+  arrange(desc(n)) %>%
+  slice(seq_len(8)) %>% 
+  ungroup()
+
+plot_words_2 %>%
+  ggplot(aes(word, 1, label = word, fill = sentiment )) +
+  geom_point(color = "transparent") +
+  geom_label_repel(force = 1,nudge_y = .5,  
+                   direction = "y",
+                   box.padding = 0.04,
+                   segment.color = "transparent",
+                   size = 3) +
+  facet_grid(~sentiment) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 6),
+        panel.grid = element_blank(), panel.background = element_blank(),
+        panel.border = element_rect("lightgray", fill = NA),
+        strip.text.x = element_text(size = 8)) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("DC Universal Characters NRC Sentiments") +
+  coord_flip() 
+```
+Grepel package is used in ggplot to repel overlapping text labels. And the geom_label_repel is used here for showing the nrc sentiment emotions for both the DC and Marcel Characters ability description.
+
+```{r}
+Marvel1 <- Marvel_common_words
+
+wordcloud::wordcloud(words=Marvel1$word,freq = Marvel_common_words$n,colors=brewer.pal(8, "Set2"))
+```
+```{r}
+wordcloud::wordcloud(words=DC_common_words$word,freq = DC_common_words$n,colors=brewer.pal(8, "Set2"))
+```
+
+Plotting the word cloud to visualize the words in the Marvel and DC separately. 
+
+```{r}
+library(reshape2)
+
+Marvel_char %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray80", "gray20"),
+                   max.words = 100)
+
+```
+
+
+```{r}
+DC_char %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray80", "gray20"),
+                   max.words = 100)
+```
+
+In the world cloud using the bing sentiments compare the positive and negative senitments for the abilities of the characters. 
+
+
+
+## Part F: Answering the question "Do superheroes tend to have a tragic history?"
+We extract the text from the childhood section and perform sentiment analysis
+
+# Captain America
+
+```{r}
+cap_america_page <- read_html("https://marvel.fandom.com/wiki/Steven_Rogers_(Earth-616)")
+cap_am_text <- cap_america_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+start_phrase <- "Steve Rogers was born July 4"
+end_phrase <- "country in the world to its citizens"
+
+matches <- regmatches(cap_am_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), cap_am_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+cap_america_life <- regmatches(cap_am_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    cap_am_text, ignore.case = TRUE))
+```
+
+# Batman
+
+```{r}
+# Load the Batman Fandom URL
+batman_page <- read_html("https://dc.fandom.com/wiki/Batman_(Bruce_Wayne)")
+
+# Extract overall text
+b_text <- batman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+start_phrase <- "Bruce Wayne was born to wealthy"
+end_phrase <- "both Thomas and Martha dead"
+
+matches <- regmatches(b_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), b_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+batman_life <- regmatches(b_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    b_text, ignore.case = TRUE))
+```
+
+#  Aquaman
+```{r}
+# Load the Wonder Woman Fandom URL
+aquaman_page <- read_html("https://dc.fandom.com/wiki/Aquaman_(Arthur_Curry)")
+# Extract overall text
+aq_text <- aquaman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Arthur Curry was born the son "
+end_phrase <- "a Xebelian princess sent to kill him."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(aq_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), aq_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+aquaman_life <- regmatches(aq_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    aq_text, ignore.case = TRUE))
+```
+
+#  Superman
+```{r}
+# Load the Wonder Woman Fandom URL
+superman_page <- read_html("https://dc.fandom.com/wiki/Superman_(Clark_Kent)")
+# Extract overall text
+sup_text <- superman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Reluctantly, after encouragement from"
+end_phrase <- "fufill his promise to the doomed president."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(sup_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), sup_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+superman_life <- regmatches(sup_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    sup_text, ignore.case = TRUE))
+```
+
+
+#  Flash
+```{r}
+# Load the Wonder Woman Fandom URL
+flash_page <- read_html("https://dc.fandom.com/wiki/Flash_(Barry_Allen)")
+# Extract overall text
+flash_text <- flash_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "After a 4 month long months in a coma"
+end_phrase <- "by lightning, just like Barry, and becoming"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(flash_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), flash_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+flash_life <- regmatches(flash_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    flash_text, ignore.case = TRUE))
+```
+
+#  Iron Man
+```{r}
+# Load the Wonder Woman Fandom URL
+im_page <- read_html("https://marvel.fandom.com/wiki/Anthony_Stark_(Earth-616)")
+# Extract overall text
+im_text <- im_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Tony grew up completely unaware of the existence"
+end_phrase <- "like skiing, parachuting, and hang-gliding."
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(im_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), im_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+ironman_life <- regmatches(im_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    im_text, ignore.case = TRUE))
+```
+
+#  Hulk
+
+```{r}
+# Load the Wonder Woman Fandom URL
+hulk_page <- read_html("https://marvel.fandom.com/wiki/Bruce_Banner_(Earth-616)")
+# Extract overall text
+hulk_text <- hulk_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Robert Bruce Banner is the son of Dr. Brian Banner, "
+end_phrase <- "great weapons designer who could work for the military"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(hulk_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), hulk_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+hulk_life <- regmatches(hulk_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    hulk_text, ignore.case = TRUE))
+```
+
+
+#  Spider Man
+```{r}
+# Load the Wonder Woman Fandom URL
+spiderman_page <- read_html("https://marvel.fandom.com/wiki/Peter_Parker_(Earth-616)")
+# Extract overall text
+spiderman_text <- spiderman_page %>% html_nodes(".page__main") %>% html_text()
+```
+
+```{r}
+# Extracting Text under Powers and Abilities
+
+# Specify start and end phrases
+start_phrase <- "Peter Benjamin Parker was born in Queens"
+end_phrase <- "bullying, primarily football star Eugene"
+
+# Use regular expression to extract text between phrases
+matches <- regmatches(spiderman_text, regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), spiderman_text, ignore.case = TRUE))
+
+# Extract text between start and end phrases using regular expressions
+spiderman_life <- regmatches(spiderman_text, 
+                            regexpr(paste0("(?i)", start_phrase, "(.*?)(?i)", end_phrase), 
+                                    spiderman_text, ignore.case = TRUE))
+```
+
+
+
+```{r}
+cleaning <- function(text_data) {
+  text = text_data$text
+  text_data %>% 
+    mutate(text = tolower(text),
+          text =removeWords(text,stop_words$word),
+          text =str_replace_all(text,"[,'`$+]", ""),
+          text =str_replace_all(text,"[[:punct:]]", " "),
+          text =str_replace_all(text,'[[:digit:]]+', " "),
+          text =str_replace_all(text,"[[:space:]]+", " "), text = trimws(text))
+}
+```
+
+```{r}
+cap_am_earlylife <- tibble(text = cap_america_life) 
+cap_america_life <- cleaning(cap_am_earlylife)
+
+batman_earlylife <- tibble(text = batman_life) 
+batman_life <- cleaning(batman_earlylife)
+
+spiderman_earlylife <- tibble(text = spiderman_life) 
+spiderman_life <- cleaning(spiderman_earlylife)
+
+hulk_earlylife <- tibble(text = hulk_life) 
+hulk_life <- cleaning(hulk_earlylife)
+
+ironman_earlylife <- tibble(text = ironman_life) 
+ironman_life <- cleaning(ironman_earlylife)
+
+superman_earlylife <- tibble(text = superman_life) 
+superman_life <- cleaning(superman_earlylife)
+
+flash_earlylife <- tibble(text = flash_life) 
+flash_life <- cleaning(flash_earlylife)
+
+aquaman_earlylife <- tibble(text = aquaman_life) 
+aquaman_life <- cleaning(aquaman_earlylife)
+
+```
+
+
+```{r}
+early_life <- bind_rows(batman_life, cap_america_life, aquaman_life, flash_life, superman_life, hulk_life, spiderman_life, ironman_life)
+```
+
+```{r}
+early_life_words <- early_life%>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>% count(word, sort = TRUE)
+
+early_life_words %>%
+  inner_join(get_sentiments("bing")) %>%
+  group_by(sentiment) %>%
+ggplot(aes(word, n, fill = sentiment)) +
+geom_bar(stat = "identity") +
+theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ylab("Contribution to sentiment") + coord_flip() +
+   facet_wrap(~sentiment, scales = "free_y") + 
+  theme(axis.text.y=element_text(size=5))
+```
+
+```{r}
+early_life_words %>% 
+  inner_join(get_sentiments("bing")) %>%
+  group_by(word) %>% count(sentiment, sort = TRUE) %>%
+  ggplot(aes(sentiment, n, color = sentiment)) +
+  geom_bar(stat = "identity") + ylab("bing words") + ggtitle("Early Life -  Positive and Negative Sentiments") + 
+  theme_economist()
+```
+
+
+```{r}
+afinn_sent <- early_life_words %>%
+  inner_join(get_sentiments("afinn")) %>%
+  group_by(word)
+
+
+afinn_sent %>% ggplot(aes(word,value,color=value))+
+  geom_bar(stat = "identity")+
+  xlab("Each word ")+ylab("Affinity Scores")+ggtitle("Affinity Score for Early life of charactersw")+theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.text.x=element_text(size=7, angle = 90, hjust = 1))
+```
+
+We see evidence for the tragic past for the Marvel and DC Universe Characters.
+
