@@ -380,3 +380,76 @@ top_10_appearances_dc_marvel <- dc_marvel %>% arrange(desc(APPEARANCES)) %>% hea
 top_10_pie_plotly(top_10_appearances_dc_marvel, top_10_appearances_dc_marvel$name, top_10_appearances_dc_marvel$APPEARANCES, "Top 10 DC and Marvel Characters by Appearances")
 ```
 
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(viridis)
+
+# Remove rows with empty values in the SEX column of marvel data frame
+marvel <- marvel %>% filter(SEX %in% c("Male Characters", "Female Characters"))
+
+# Remove rows with empty values in the SEX column of dc data frame
+dc <- dc %>% filter(SEX %in% c("Male Characters", "Female Characters"))
+
+plot_count <- function(data, x_var, hue_var, title, palette, x_labels) {
+  ggplot(data = data, aes_string(x = x_var, fill = hue_var)) + 
+    geom_bar(position = "dodge") + 
+    labs(title = title, x = x_var, y = "Count") +
+    theme_bw() +
+    theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      axis.title = element_text(size = 12, face = "bold"),
+      axis.text = element_text(size = 10),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.title = element_text(size = 12, face = "bold"),
+      legend.text = element_text(size = 10),
+      panel.grid.major = element_line(color = "grey", linetype = "dashed"),
+      panel.grid.minor = element_blank(),
+      panel.border = element_blank(),
+      panel.background = element_blank()
+    ) +
+    scale_fill_manual(values = palette) +
+    scale_x_discrete(labels = x_labels)
+}
+
+
+align_x_labels <- c("Good Characters", "Bad Characters", "Neutral Characters")
+id_x_labels <- c("Secret Identity", "Public Identity")
+alive_x_labels <- c("Living Characters", "Deceased Characters")
+
+# Filter out any values that are not part of the specified labels for each plot
+marvel_align <- marvel %>% filter(ALIGN %in% align_x_labels)
+dc_align <- dc %>% filter(ALIGN %in% align_x_labels)
+marvel_id <- marvel %>% filter(ID %in% id_x_labels)
+dc_id <- dc %>% filter(ID %in% id_x_labels)
+marvel_alive <- marvel %>% filter(ALIVE %in% alive_x_labels)
+dc_alive <- dc %>% filter(ALIVE %in% alive_x_labels)
+
+# Marvel Sex vs Align
+plot1 <- plot_count(marvel_align, "ALIGN", "SEX", "Marvel Sex vs Align", c("red", "blue", "green", "orange", "purple"), align_x_labels)
+print(plot1)
+
+# DC Sex vs Align
+plot2 <- plot_count(dc_align, "ALIGN", "SEX", "DC Sex vs Align", c("red", "blue", "green", "orange", "purple"), align_x_labels)
+print(plot2)
+
+# Marvel Sex vs Identity
+plot3 <- plot_count(marvel_id, "ID", "SEX", "Marvel Sex vs Identity", plasma(5), id_x_labels)
+print(plot3)
+
+# DC Sex vs Identity
+plot4 <- plot_count(dc_id, "ID", "SEX", "DC Sex vs Identity", plasma(5), id_x_labels)
+print(plot4)
+
+# Marvel Sex vs Living status
+plot5 <- plot_count(marvel_alive, "ALIVE", "SEX", "Marvel Sex vs Living status", viridis(5), alive_x_labels)
+print(plot5)
+
+# DC Sex vs Living status
+plot6 <- plot_count(dc_alive, "ALIVE", "SEX", "DC Sex vs Living status", viridis(5), alive_x_labels)
+print(plot6)
+```
+
+
